@@ -1,0 +1,2 @@
+[workspace]
+members = ["common_lib", "indexer", "client"]
