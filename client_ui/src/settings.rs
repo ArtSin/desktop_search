@@ -1,10 +1,28 @@
+use std::path::PathBuf;
+
 use common_lib::{ClientSettings, ServerSettings};
 use serde::Serialize;
 use serde_wasm_bindgen::{from_value, to_value};
 use sycamore::{futures::spawn_local_scoped, prelude::*};
 use url::Url;
+use uuid::Uuid;
 
 use crate::app::invoke;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct DirectoryItem {
+    id: Uuid,
+    path: PathBuf,
+}
+
+impl DirectoryItem {
+    fn new(path: PathBuf) -> Self {
+        Self {
+            id: Uuid::new_v4(),
+            path,
+        }
+    }
+}
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -31,6 +49,7 @@ pub fn Settings<G: Html>(cx: Scope) -> View<G> {
         create_signal(cx, server_settings.get().elasticsearch_url.to_string());
     let tika_url_str = create_signal(cx, server_settings.get().tika_url.to_string());
     let nnserver_url_str = create_signal(cx, server_settings.get().nnserver_url.to_string());
+    let indexing_directories = create_signal(cx, Vec::new());
 
     let indexer_url_valid = create_memo(cx, || Url::parse(indexer_url_str.get().as_str()).is_ok());
     let elasticsearch_url_valid = create_memo(cx, || {
@@ -53,6 +72,14 @@ pub fn Settings<G: Html>(cx: Scope) -> View<G> {
         elasticsearch_url_str.set(server_settings.get().elasticsearch_url.to_string());
         tika_url_str.set(server_settings.get().tika_url.to_string());
         nnserver_url_str.set(server_settings.get().nnserver_url.to_string());
+        indexing_directories.set(
+            server_settings
+                .get()
+                .indexing_directories
+                .iter()
+                .map(|p| DirectoryItem::new(p.clone()))
+                .collect(),
+        );
     });
     let reset_settings = |_| {
         client_settings.trigger_subscribers();
@@ -132,6 +159,11 @@ pub fn Settings<G: Html>(cx: Scope) -> View<G> {
                     elasticsearch_url: Url::parse(&elasticsearch_url_str.get()).unwrap(),
                     tika_url: Url::parse(&tika_url_str.get()).unwrap(),
                     nnserver_url: Url::parse(&nnserver_url_str.get()).unwrap(),
+                    indexing_directories: indexing_directories
+                        .get()
+                        .iter()
+                        .map(|f| f.path.clone())
+                        .collect(),
                 };
 
                 if let Err(e) = invoke(
@@ -180,6 +212,11 @@ pub fn Settings<G: Html>(cx: Scope) -> View<G> {
                                 TextSetting(id="nnserver_url", label="URL сервера нейронных сетей: ",
                                     value=nnserver_url_str, valid=nnserver_url_valid)
                             }
+
+                            fieldset {
+                                legend { "Индексируемые папки" }
+                                DirectoryList(directory_list=indexing_directories)
+                            }
                         }
                     } else {
                         view! {cx, }
@@ -205,7 +242,7 @@ pub fn Settings<G: Html>(cx: Scope) -> View<G> {
     }
 }
 
-#[derive(Props)]
+#[derive(Prop)]
 struct TextSettingProps<'a> {
     id: &'static str,
     label: &'static str,
@@ -217,10 +254,66 @@ struct TextSettingProps<'a> {
 fn TextSetting<'a, G: Html>(cx: Scope<'a>, props: TextSettingProps<'a>) -> View<G> {
     let value = props.value;
     view! { cx,
-        div(class="text_setting") {
+        div(class="setting") {
             label(for=props.id) { (props.label) }
             input(type="text", id=props.id, name=props.id, bind:value=value) {}
             (if *props.valid.get() { "✅" } else { "❌" })
+        }
+    }
+}
+
+#[component(inline_props)]
+fn DirectoryList<'a, G: Html>(
+    cx: Scope<'a>,
+    directory_list: &'a Signal<Vec<DirectoryItem>>,
+) -> View<G> {
+    let curr_directory = create_signal(cx, PathBuf::new());
+    let curr_directory_empty = create_memo(cx, || curr_directory.get().as_os_str().is_empty());
+
+    let select_item = move |_| {
+        spawn_local_scoped(cx, async {
+            let path_option: Option<PathBuf> = from_value(
+                invoke("pick_folder", wasm_bindgen::JsValue::UNDEFINED)
+                    .await
+                    .unwrap(),
+            )
+            .unwrap();
+
+            if let Some(path) = path_option {
+                curr_directory.set(path);
+            }
+        });
+    };
+
+    let add_item = |_| {
+        directory_list
+            .modify()
+            .push(DirectoryItem::new((*curr_directory.get()).clone()));
+        curr_directory.set(PathBuf::new());
+    };
+
+    view! { cx,
+        Keyed(
+            iterable=directory_list,
+            view=move |cx, item| {
+                let delete_item = move |_| {
+                    directory_list.modify().retain(|x| x.id != item.id);
+                };
+
+                view! { cx,
+                    div(class="setting") {
+                        input(type="text", readonly=true, value=item.path.display()) {}
+                        button(type="button", on:click=delete_item) { "-" }
+                    }
+                }
+            },
+            key=|item| item.id,
+        )
+
+        div(class="setting") {
+            input(type="text", readonly=true, value=curr_directory.get().display()) {}
+            button(type="button", on:click=select_item) { "Выбрать..." }
+            button(type="button", on:click=add_item, disabled=*curr_directory_empty.get()) { "+" }
         }
     }
 }

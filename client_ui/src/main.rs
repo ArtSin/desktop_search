@@ -5,12 +5,12 @@ mod status;
 
 use app::App;
 
-#[cfg(all(not(debug_assertions), not(feature = "ssg")))]
-fn main() {
-    sycamore::hydrate(App);
-}
+// #[cfg(all(not(debug_assertions), not(feature = "ssg")))]
+// fn main() {
+//     sycamore::hydrate(App);
+// }
 
-#[cfg(all(debug_assertions, not(feature = "ssg")))]
+// #[cfg(all(debug_assertions, not(feature = "ssg")))]
 fn main() {
     sycamore::render(App);
 }

@@ -3,9 +3,10 @@
     windows_subsystem = "windows"
 )]
 
-use std::{sync::RwLock, time::Duration};
+use std::{path::PathBuf, sync::RwLock, time::Duration};
 
 use common_lib::{ClientSettings, ServerSettings};
+use tauri::api::dialog::blocking::FileDialogBuilder;
 
 const SETTINGS_FILE_PATH: &str = "ClientSettings.toml";
 
@@ -92,6 +93,11 @@ async fn set_server_settings(
     Ok(())
 }
 
+#[tauri::command]
+async fn pick_folder() -> Option<PathBuf> {
+    FileDialogBuilder::new().pick_folder()
+}
+
 #[tokio::main]
 async fn main() {
     tauri::async_runtime::set(tokio::runtime::Handle::current());
@@ -101,7 +107,8 @@ async fn main() {
             get_client_settings,
             set_client_settings,
             get_server_settings,
-            set_server_settings
+            set_server_settings,
+            pick_folder
         ])
         .run(tauri::generate_context!())
         .expect("Error while running tauri application");

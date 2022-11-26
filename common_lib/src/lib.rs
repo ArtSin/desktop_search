@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 use serde::{Deserialize, Serialize};
 use url::Url;
 
@@ -20,6 +22,7 @@ pub struct ServerSettings {
     pub elasticsearch_url: Url,
     pub tika_url: Url,
     pub nnserver_url: Url,
+    pub indexing_directories: Vec<PathBuf>,
 }
 
 impl Default for ServerSettings {
@@ -28,6 +31,7 @@ impl Default for ServerSettings {
             elasticsearch_url: Url::parse("http://127.0.0.1:9200").unwrap(),
             tika_url: Url::parse("http://127.0.0.1:9998").unwrap(),
             nnserver_url: Url::parse("http://127.0.0.1:10000").unwrap(),
+            indexing_directories: Vec::new(),
         }
     }
 }

@@ -121,13 +121,13 @@ main {
     flex-grow: 1;
 }
 
-div.text_setting {
+div.setting {
     display: flex;
     justify-content: space-evenly;
     align-items: center;
 }
 
-div.text_setting>input {
+div.setting>input {
     flex-grow: 1;
 }
 
