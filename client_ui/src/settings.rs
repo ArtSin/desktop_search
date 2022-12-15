@@ -1,13 +1,118 @@
 use std::path::PathBuf;
 
-use common_lib::{ClientSettings, ServerSettings};
+use common_lib::settings::{ClientSettings, ServerSettings};
 use serde::Serialize;
 use serde_wasm_bindgen::{from_value, to_value};
 use sycamore::{futures::spawn_local_scoped, prelude::*};
 use url::Url;
 use uuid::Uuid;
 
-use crate::app::invoke;
+use crate::app::{invoke, StatusMessage};
+
+const MAX_FILE_SIZE_MIN: f64 = 0.01;
+const MAX_FILE_SIZE_MAX: f64 = 100.0;
+const MAX_FILE_SIZE_STEP: f64 = 0.01;
+
+trait ClientSettingsUi {
+    fn get_indexer_url_str(&self) -> String;
+
+    fn valid_indexer_url(indexer_url_str: &str) -> bool;
+
+    fn parse(indexer_url_str: &str) -> Self;
+}
+
+trait ServerSettingsUi {
+    fn get_elasticsearch_url_str(&self) -> String;
+    fn get_tika_url_str(&self) -> String;
+    fn get_nnserver_url_str(&self) -> String;
+    fn get_indexing_directories_dir_items(&self) -> Vec<DirectoryItem>;
+    fn get_max_file_size_str(&self) -> String;
+
+    fn valid_elasticsearch_url(elasticsearch_url_str: &str) -> bool;
+    fn valid_tika_url(tika_url_str: &str) -> bool;
+    fn valid_nnserver_url(nnserver_url_str: &str) -> bool;
+    fn valid_max_file_size(max_file_size_str: &str) -> bool;
+
+    fn parse(
+        elasticsearch_url_str: &str,
+        tika_url_str: &str,
+        nnserver_url_str: &str,
+        indexing_directories_dir_items: &[DirectoryItem],
+        max_file_size_str: &str,
+    ) -> Self;
+}
+
+impl ClientSettingsUi for ClientSettings {
+    fn get_indexer_url_str(&self) -> String {
+        self.indexer_url.to_string()
+    }
+
+    fn valid_indexer_url(indexer_url_str: &str) -> bool {
+        Url::parse(indexer_url_str).is_ok()
+    }
+
+    fn parse(indexer_url_str: &str) -> Self {
+        Self {
+            indexer_url: Url::parse(indexer_url_str).unwrap(),
+        }
+    }
+}
+
+impl ServerSettingsUi for ServerSettings {
+    fn get_elasticsearch_url_str(&self) -> String {
+        self.elasticsearch_url.to_string()
+    }
+    fn get_tika_url_str(&self) -> String {
+        self.tika_url.to_string()
+    }
+    fn get_nnserver_url_str(&self) -> String {
+        self.nnserver_url.to_string()
+    }
+    fn get_indexing_directories_dir_items(&self) -> Vec<DirectoryItem> {
+        self.indexing_directories
+            .iter()
+            .map(|p| DirectoryItem::new(p.clone()))
+            .collect()
+    }
+    fn get_max_file_size_str(&self) -> String {
+        ((self.max_file_size as f64) / 1024.0 / 1024.0).to_string()
+    }
+
+    fn valid_elasticsearch_url(elasticsearch_url_str: &str) -> bool {
+        Url::parse(elasticsearch_url_str).is_ok()
+    }
+    fn valid_tika_url(tika_url_str: &str) -> bool {
+        Url::parse(tika_url_str).is_ok()
+    }
+    fn valid_nnserver_url(nnserver_url_str: &str) -> bool {
+        Url::parse(nnserver_url_str).is_ok()
+    }
+    fn valid_max_file_size(max_file_size_str: &str) -> bool {
+        max_file_size_str
+            .parse()
+            .map(|x: f64| (MAX_FILE_SIZE_MIN..=MAX_FILE_SIZE_MAX).contains(&x))
+            == Ok(true)
+    }
+
+    fn parse(
+        elasticsearch_url_str: &str,
+        tika_url_str: &str,
+        nnserver_url_str: &str,
+        indexing_directories_dir_items: &[DirectoryItem],
+        max_file_size_str: &str,
+    ) -> Self {
+        Self {
+            elasticsearch_url: Url::parse(elasticsearch_url_str).unwrap(),
+            tika_url: Url::parse(tika_url_str).unwrap(),
+            nnserver_url: Url::parse(nnserver_url_str).unwrap(),
+            indexing_directories: indexing_directories_dir_items
+                .iter()
+                .map(|f| f.path.clone())
+                .collect(),
+            max_file_size: (max_file_size_str.parse::<f64>().unwrap() * 1024.0 * 1024.0) as u64,
+        }
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct DirectoryItem {
@@ -38,48 +143,59 @@ struct SetServerSettingsArgs<'a> {
 
 #[component]
 pub fn Settings<G: Html>(cx: Scope) -> View<G> {
+    // Use default settings until loaded from server
     let client_settings = create_signal(cx, ClientSettings::default());
     let server_settings = create_signal(cx, ServerSettings::default());
 
     let server_loaded = create_signal(cx, false);
     let status_str = create_signal(cx, String::new());
 
-    let indexer_url_str = create_signal(cx, client_settings.get().indexer_url.to_string());
+    // Input values for settings
+    let indexer_url_str = create_signal(cx, client_settings.get().get_indexer_url_str());
     let elasticsearch_url_str =
-        create_signal(cx, server_settings.get().elasticsearch_url.to_string());
-    let tika_url_str = create_signal(cx, server_settings.get().tika_url.to_string());
-    let nnserver_url_str = create_signal(cx, server_settings.get().nnserver_url.to_string());
-    let indexing_directories = create_signal(cx, Vec::new());
+        create_signal(cx, server_settings.get().get_elasticsearch_url_str());
+    let tika_url_str = create_signal(cx, server_settings.get().get_tika_url_str());
+    let nnserver_url_str = create_signal(cx, server_settings.get().get_nnserver_url_str());
+    let indexing_directories = create_signal(
+        cx,
+        server_settings.get().get_indexing_directories_dir_items(),
+    );
+    let max_file_size_str = create_signal(cx, server_settings.get().get_max_file_size_str());
 
-    let indexer_url_valid = create_memo(cx, || Url::parse(indexer_url_str.get().as_str()).is_ok());
-    let elasticsearch_url_valid = create_memo(cx, || {
-        Url::parse(elasticsearch_url_str.get().as_str()).is_ok()
+    // Validation values for settings
+    let indexer_url_valid = create_memo(cx, || {
+        ClientSettings::valid_indexer_url(indexer_url_str.get().as_str())
     });
-    let tika_url_valid = create_memo(cx, || Url::parse(tika_url_str.get().as_str()).is_ok());
-    let nnserver_url_valid =
-        create_memo(cx, || Url::parse(nnserver_url_str.get().as_str()).is_ok());
+    let elasticsearch_url_valid = create_memo(cx, || {
+        ServerSettings::valid_elasticsearch_url(elasticsearch_url_str.get().as_str())
+    });
+    let tika_url_valid = create_memo(cx, || {
+        ServerSettings::valid_tika_url(tika_url_str.get().as_str())
+    });
+    let nnserver_url_valid = create_memo(cx, || {
+        ServerSettings::valid_nnserver_url(nnserver_url_str.get().as_str())
+    });
+    let max_file_size_valid = create_memo(cx, || {
+        ServerSettings::valid_max_file_size(max_file_size_str.get().as_str())
+    });
     let any_invalid = create_memo(cx, || {
         !*indexer_url_valid.get()
             || !*elasticsearch_url_valid.get()
             || !*tika_url_valid.get()
             || !*nnserver_url_valid.get()
+            || !*max_file_size_valid.get()
     });
 
+    // Set input values from settings when they are updated (on load from server or reset)
     create_effect(cx, || {
-        indexer_url_str.set(client_settings.get().indexer_url.to_string())
+        indexer_url_str.set(client_settings.get().get_indexer_url_str())
     });
     create_effect(cx, || {
-        elasticsearch_url_str.set(server_settings.get().elasticsearch_url.to_string());
-        tika_url_str.set(server_settings.get().tika_url.to_string());
-        nnserver_url_str.set(server_settings.get().nnserver_url.to_string());
-        indexing_directories.set(
-            server_settings
-                .get()
-                .indexing_directories
-                .iter()
-                .map(|p| DirectoryItem::new(p.clone()))
-                .collect(),
-        );
+        elasticsearch_url_str.set(server_settings.get().get_elasticsearch_url_str());
+        tika_url_str.set(server_settings.get().get_tika_url_str());
+        nnserver_url_str.set(server_settings.get().get_nnserver_url_str());
+        indexing_directories.set(server_settings.get().get_indexing_directories_dir_items());
+        max_file_size_str.set(server_settings.get().get_max_file_size_str());
     });
     let reset_settings = |_| {
         client_settings.trigger_subscribers();
@@ -120,6 +236,7 @@ pub fn Settings<G: Html>(cx: Scope) -> View<G> {
         }
     };
 
+    // Load settings
     spawn_local_scoped(cx, async move {
         status_str.set("⏳ Загрузка...".to_owned());
 
@@ -128,13 +245,12 @@ pub fn Settings<G: Html>(cx: Scope) -> View<G> {
         }
     });
 
+    // Save settings
     let set_settings = move |_| {
         spawn_local_scoped(cx, async move {
             status_str.set("⏳ Сохранение...".to_owned());
 
-            let new_client_settings = ClientSettings {
-                indexer_url: Url::parse(&indexer_url_str.get()).unwrap(),
-            };
+            let new_client_settings = ClientSettings::parse(&indexer_url_str.get());
 
             if let Err(e) = invoke(
                 "set_client_settings",
@@ -155,16 +271,13 @@ pub fn Settings<G: Html>(cx: Scope) -> View<G> {
             client_settings.set(new_client_settings);
 
             if *server_loaded.get() {
-                let new_server_settings = ServerSettings {
-                    elasticsearch_url: Url::parse(&elasticsearch_url_str.get()).unwrap(),
-                    tika_url: Url::parse(&tika_url_str.get()).unwrap(),
-                    nnserver_url: Url::parse(&nnserver_url_str.get()).unwrap(),
-                    indexing_directories: indexing_directories
-                        .get()
-                        .iter()
-                        .map(|f| f.path.clone())
-                        .collect(),
-                };
+                let new_server_settings = ServerSettings::parse(
+                    &elasticsearch_url_str.get(),
+                    &tika_url_str.get(),
+                    &nnserver_url_str.get(),
+                    &indexing_directories.get(),
+                    &max_file_size_str.get(),
+                );
 
                 if let Err(e) = invoke(
                     "set_server_settings",
@@ -217,6 +330,13 @@ pub fn Settings<G: Html>(cx: Scope) -> View<G> {
                                 legend { "Индексируемые папки" }
                                 DirectoryList(directory_list=indexing_directories)
                             }
+
+                            fieldset {
+                                legend { "Настройки индексации" }
+                                NumberSetting(id="max_file_size", label="Максимальный размер файла (МиБ): ",
+                                    min=MAX_FILE_SIZE_MIN, max=MAX_FILE_SIZE_MAX, step=MAX_FILE_SIZE_STEP,
+                                    value=max_file_size_str, valid=max_file_size_valid)
+                            }
                         }
                     } else {
                         view! {cx, }
@@ -228,15 +348,7 @@ pub fn Settings<G: Html>(cx: Scope) -> View<G> {
                     }
                 }
 
-                (if !status_str.get().is_empty() {
-                    view! { cx,
-                        p(class="status") {
-                            (status_str.get())
-                        }
-                    }
-                } else {
-                    view! { cx, }
-                })
+                StatusMessage(status_str=status_str)
             }
         }
     }
@@ -258,6 +370,30 @@ fn TextSetting<'a, G: Html>(cx: Scope<'a>, props: TextSettingProps<'a>) -> View<
             label(for=props.id) { (props.label) }
             input(type="text", id=props.id, name=props.id, bind:value=value) {}
             (if *props.valid.get() { "✅" } else { "❌" })
+        }
+    }
+}
+
+#[derive(Prop)]
+struct NumberSettingProps<'a> {
+    id: &'static str,
+    label: &'static str,
+    min: f64,
+    max: f64,
+    step: f64,
+    value: &'a Signal<String>,
+    valid: &'a ReadSignal<bool>,
+}
+
+#[component]
+fn NumberSetting<'a, G: Html>(cx: Scope<'a>, props: NumberSettingProps<'a>) -> View<G> {
+    let value = props.value;
+    view! { cx,
+        div(class="setting") {
+            label(for=props.id) { (props.label) }
+            input(type="number", id=props.id, name=props.id,
+                min=props.min, max=props.max, step=props.step, bind:value=value) {}
+                (if *props.valid.get() { "✅" } else { "❌" })
         }
     }
 }

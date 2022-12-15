@@ -1,10 +1,11 @@
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 
 use axum::{extract::State, http::StatusCode, Json};
 use serde::{Deserialize, Serialize};
+use tokio::sync::RwLock;
 use tracing_unwrap::ResultExt;
 
-use common_lib::ServerSettings;
+use common_lib::settings::ServerSettings;
 
 use crate::ServerState;
 
@@ -38,20 +39,26 @@ pub async fn read_settings_file() -> InternalServerSettings {
 }
 
 async fn write_settings_file(state: Arc<RwLock<ServerState>>) -> std::io::Result<()> {
-    let s = toml::to_string(&state.read().unwrap().settings).unwrap();
+    let s = toml::to_string(&state.read().await.settings).unwrap();
     tokio::fs::write(SETTINGS_FILE_PATH, s).await?;
     Ok(())
 }
 
+/// Get current settings
 pub async fn get_settings(State(state): State<Arc<RwLock<ServerState>>>) -> Json<ServerSettings> {
-    Json(state.read().unwrap().settings.other.clone())
+    Json(state.read().await.settings.other.clone())
 }
 
+/// Set settings from JSON
 pub async fn put_settings(
     State(state): State<Arc<RwLock<ServerState>>>,
     Json(new_settings): Json<ServerSettings>,
 ) -> Result<(), (StatusCode, String)> {
-    state.write().unwrap().settings.other = new_settings;
+    {
+        let mut state = state.write().await;
+        state.settings.other = new_settings;
+        state.update_es();
+    }
     write_settings_file(state)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;

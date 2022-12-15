@@ -1,12 +1,9 @@
-use std::{
-    net::SocketAddr,
-    sync::{Arc, RwLock},
-    time::Duration,
-};
+use std::{net::SocketAddr, sync::Arc, time::Duration};
 
 use axum::{error_handling::HandleErrorLayer, http::StatusCode, routing::get, BoxError, Router};
+use common_lib::IndexingStatus;
 use elasticsearch::{http::transport::Transport, Elasticsearch};
-use tokio::signal;
+use tokio::{signal, sync::RwLock};
 use tower::ServiceBuilder;
 use tower_http::trace::TraceLayer;
 use tracing_subscriber::{
@@ -15,13 +12,28 @@ use tracing_subscriber::{
 };
 use tracing_unwrap::ResultExt;
 
-use crate::settings::{read_settings_file, InternalServerSettings};
+use crate::{
+    indexer::create_index,
+    settings::{read_settings_file, InternalServerSettings},
+};
 
+mod indexer;
+mod scanner;
 mod settings;
 
 pub struct ServerState {
     settings: InternalServerSettings,
     es_client: Elasticsearch,
+    reqwest_client: reqwest::Client,
+    indexing_status: IndexingStatus,
+}
+
+impl ServerState {
+    fn update_es(&mut self) {
+        let es_transport = Transport::single_node(self.settings.other.elasticsearch_url.as_str())
+            .expect_or_log("Can't create connection to Elasticsearch");
+        self.es_client = Elasticsearch::new(es_transport);
+    }
 }
 
 #[tokio::main]
@@ -45,15 +57,27 @@ async fn main() {
     let es_transport = Transport::single_node(settings.other.elasticsearch_url.as_str())
         .expect_or_log("Can't create connection to Elasticsearch");
     let es_client = Elasticsearch::new(es_transport);
+    create_index(&es_client)
+        .await
+        .expect_or_log("Can't create Elasticsearch index");
 
     let app = Router::new()
         .route(
             "/settings",
             get(settings::get_settings).put(settings::put_settings),
         )
+        .route(
+            "/index",
+            get(indexer::indexing_status).patch(indexer::index),
+        )
         .with_state(Arc::new(RwLock::new(ServerState {
             settings,
             es_client,
+            reqwest_client: reqwest::Client::builder()
+                .timeout(Duration::from_secs(10))
+                .build()
+                .unwrap(),
+            indexing_status: IndexingStatus::NotStarted,
         })))
         .layer(
             ServiceBuilder::new()

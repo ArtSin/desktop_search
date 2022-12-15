@@ -1,37 +1,29 @@
-use std::path::PathBuf;
+use std::error::Error;
 
 use serde::{Deserialize, Serialize};
-use url::Url;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ClientSettings {
-    pub indexer_url: Url,
+pub mod elasticsearch;
+pub mod search;
+pub mod settings;
+pub mod status;
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum IndexingStatus {
+    NotStarted,
+    Indexing,
+    Finished,
+    Error(String),
 }
 
-impl Default for ClientSettings {
-    fn default() -> Self {
-        Self {
-            indexer_url: Url::parse("http://127.0.0.1:11000").unwrap(),
-        }
+impl IndexingStatus {
+    pub fn can_start(&self) -> bool {
+        *self != Self::Indexing
     }
-}
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(default)]
-pub struct ServerSettings {
-    pub elasticsearch_url: Url,
-    pub tika_url: Url,
-    pub nnserver_url: Url,
-    pub indexing_directories: Vec<PathBuf>,
-}
-
-impl Default for ServerSettings {
-    fn default() -> Self {
-        Self {
-            elasticsearch_url: Url::parse("http://127.0.0.1:9200").unwrap(),
-            tika_url: Url::parse("http://127.0.0.1:9998").unwrap(),
-            nnserver_url: Url::parse("http://127.0.0.1:10000").unwrap(),
-            indexing_directories: Vec::new(),
-        }
+    pub fn add_error(&mut self, e: Box<dyn Error>) {
+        *self = match self {
+            Self::Error(old_e) => Self::Error(format!("{}\n{}", old_e, e)),
+            _ => Self::Error(e.to_string()),
+        };
     }
 }

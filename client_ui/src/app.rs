@@ -80,3 +80,18 @@ pub fn App<G: Html>(cx: Scope) -> View<G> {
         }
     }
 }
+
+#[component(inline_props)]
+pub fn StatusMessage<'a, G: Html>(cx: Scope<'a>, status_str: &'a ReadSignal<String>) -> View<G> {
+    view! { cx,
+        (if !status_str.get().is_empty() {
+            view! { cx,
+                p(class="status") {
+                    (status_str.get())
+                }
+            }
+        } else {
+            view! { cx, }
+        })
+    }
+}
