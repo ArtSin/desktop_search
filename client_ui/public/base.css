@@ -2,6 +2,12 @@
     box-sizing: border-box;
 }
 
+@media (prefers-color-scheme: dark) {
+    * {
+        color-scheme: dark;
+    }
+}
+
 body {
     width: 100%;
     max-width: 100%;
@@ -65,7 +71,7 @@ div.main_container {
 }
 
 @media (max-width: 800px) {
-    #main_container {
+    .main_container {
         flex-wrap: wrap;
     }
 }
@@ -74,15 +80,16 @@ aside {
     max-width: 15em;
     margin: 1em;
     flex-shrink: 0;
+    display: flex;
 }
 
-/* div.date_time_field {
+div.filter_field {
     display: flex;
     justify-content: space-evenly;
-    align-items: baseline;
+    align-items: center;
 }
 
-input.time_field {
+/*input.time_field {
     width: 5em;
 }
 
@@ -147,17 +154,6 @@ article.search_result>p {
     font-size: 1.17em;
     text-align: center;
 }
-
-/* div.index_content {
-    display: flex;
-    flex-wrap: wrap;
-    justify-content: space-evenly;
-}
-
-div.index_content>div {
-    margin: 1em;
-    text-align: center;
-} */
 
 @keyframes fade_in {
     from {

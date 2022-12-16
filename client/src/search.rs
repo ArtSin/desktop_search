@@ -8,15 +8,25 @@ use tauri::async_runtime::RwLock;
 
 use crate::ClientState;
 
-use self::query::simple_query_string;
+use self::query::{range, simple_query_string};
 
 const RESULTS_PER_PAGE: u32 = 20;
 
 fn get_request_body(search_request: SearchRequest) -> Value {
-    let es_request_must = [Some(simple_query_string(
-        search_request.query,
-        &["path", "hash"],
-    ))]
+    let es_request_must = [
+        Some(simple_query_string(search_request.query, &["path", "hash"])),
+        (search_request.modified_from.is_some() || search_request.modified_to.is_some()).then(
+            || {
+                range(
+                    "modified",
+                    search_request.modified_from.map(|d| d.timestamp()),
+                    search_request.modified_to.map(|d| d.timestamp()),
+                )
+            },
+        ),
+        (search_request.size_from.is_some() || search_request.size_to.is_some())
+            .then(|| range("size", search_request.size_from, search_request.size_to)),
+    ]
     .into_iter()
     .flatten()
     .collect::<Vec<_>>();
@@ -29,6 +39,7 @@ fn get_request_body(search_request: SearchRequest) -> Value {
         }
     })
 }
+
 async fn get_es_response(
     es_client: &Elasticsearch,
     page: u32,
@@ -72,6 +83,7 @@ pub async fn search(
 }
 
 mod query {
+    use serde::Serialize;
     use serde_json::{json, Value};
 
     pub fn simple_query_string(mut query: String, fields: &[&str]) -> Value {
@@ -106,16 +118,16 @@ mod query {
     //     })
     // }
 
-    // pub fn range(field: &str, gte: impl Serialize, lte: impl Serialize) -> Value {
-    //     json!({
-    //         "range": {
-    //             field: {
-    //                 "gte": gte,
-    //                 "lte": lte,
-    //             }
-    //         }
-    //     })
-    // }
+    pub fn range(field: &str, gte: impl Serialize, lte: impl Serialize) -> Value {
+        json!({
+            "range": {
+                field: {
+                    "gte": gte,
+                    "lte": lte,
+                }
+            }
+        })
+    }
 
     // pub fn suggest(query: Option<String>, field: &str) -> Value {
     //     json!({

@@ -9,9 +9,8 @@ use uuid::Uuid;
 
 use crate::app::{invoke, StatusMessage};
 
-const MAX_FILE_SIZE_MIN: f64 = 0.01;
-const MAX_FILE_SIZE_MAX: f64 = 100.0;
-const MAX_FILE_SIZE_STEP: f64 = 0.01;
+pub const MAX_FILE_SIZE_MIN: f64 = 0.01;
+pub const MAX_FILE_SIZE_MAX: f64 = 1000.0;
 
 trait ClientSettingsUi {
     fn get_indexer_url_str(&self) -> String;
@@ -334,7 +333,6 @@ pub fn Settings<G: Html>(cx: Scope) -> View<G> {
                             fieldset {
                                 legend { "Настройки индексации" }
                                 NumberSetting(id="max_file_size", label="Максимальный размер файла (МиБ): ",
-                                    min=MAX_FILE_SIZE_MIN, max=MAX_FILE_SIZE_MAX, step=MAX_FILE_SIZE_STEP,
                                     value=max_file_size_str, valid=max_file_size_valid)
                             }
                         }
@@ -378,9 +376,6 @@ fn TextSetting<'a, G: Html>(cx: Scope<'a>, props: TextSettingProps<'a>) -> View<
 struct NumberSettingProps<'a> {
     id: &'static str,
     label: &'static str,
-    min: f64,
-    max: f64,
-    step: f64,
     value: &'a Signal<String>,
     valid: &'a ReadSignal<bool>,
 }
@@ -391,9 +386,8 @@ fn NumberSetting<'a, G: Html>(cx: Scope<'a>, props: NumberSettingProps<'a>) -> V
     view! { cx,
         div(class="setting") {
             label(for=props.id) { (props.label) }
-            input(type="number", id=props.id, name=props.id,
-                min=props.min, max=props.max, step=props.step, bind:value=value) {}
-                (if *props.valid.get() { "✅" } else { "❌" })
+            input(type="text", size=10, id=props.id, name=props.id, bind:value=value) {}
+            (if *props.valid.get() { "✅" } else { "❌" })
         }
     }
 }
