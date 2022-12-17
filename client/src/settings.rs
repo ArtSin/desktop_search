@@ -68,6 +68,8 @@ pub async fn set_server_settings(
         .json(&server_settings)
         .send()
         .await
+        .map_err(|e| e.to_string())?
+        .error_for_status()
         .map_err(|e| e.to_string())?;
     let mut tmp = state.write().await;
     tmp.server_settings = server_settings;

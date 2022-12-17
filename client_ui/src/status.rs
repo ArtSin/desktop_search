@@ -1,4 +1,4 @@
-use common_lib::status::IndexStats;
+use common_lib::{status::IndexStats, IndexingStatus};
 use serde_wasm_bindgen::from_value;
 use sycamore::{futures::spawn_local_scoped, prelude::*};
 
@@ -7,11 +7,30 @@ use crate::app::{invoke, StatusMessage};
 #[component]
 pub fn Status<G: Html>(cx: Scope) -> View<G> {
     let status_str = create_signal(cx, String::new());
+    let indexing_status = create_signal(cx, IndexingStatus::Finished);
     let index_stats = create_signal(cx, IndexStats::default());
 
-    let load_stats = move || {
+    let indexing_status_str = create_memo(cx, || indexing_status.get().to_string());
+    let is_indexing = create_memo(cx, || !indexing_status.get().can_start());
+
+    let update = move || {
         spawn_local_scoped(cx, async move {
             status_str.set("⏳ Загрузка...".to_owned());
+
+            match invoke("get_indexing_status", wasm_bindgen::JsValue::UNDEFINED)
+                .await
+                .map_err(|e| e.as_string().unwrap())
+                .and_then(|x| from_value::<IndexingStatus>(x).map_err(|e| e.to_string()))
+            {
+                Ok(x) => {
+                    indexing_status.set(x);
+                    status_str.set("".to_owned());
+                }
+                Err(e) => {
+                    status_str.set("❌ Ошибка загрузки статуса индексирования: ".to_owned() + &e);
+                    return;
+                }
+            }
 
             match invoke("get_index_stats", wasm_bindgen::JsValue::UNDEFINED)
                 .await
@@ -29,17 +48,45 @@ pub fn Status<G: Html>(cx: Scope) -> View<G> {
         })
     };
 
-    load_stats();
+    update();
+
+    let index = move |_| {
+        spawn_local_scoped(cx, async move {
+            status_str.set("⏳ Загрузка...".to_owned());
+
+            if let Err(e) = invoke("index", wasm_bindgen::JsValue::UNDEFINED)
+                .await
+                .map_err(|e| e.as_string().unwrap())
+            {
+                status_str.set("❌ Ошибка индексирования: ".to_owned() + &e);
+                return;
+            }
+
+            update();
+        })
+    };
 
     view! { cx,
         div(class="main_container") {
             main {
                 StatusMessage(status_str=status_str)
+                StatusMessage(status_str=indexing_status_str)
 
-                form(id="status", action="javascript:void(0);") {
+                form(id="status", on:submit=index, action="javascript:void(0);") {
                     fieldset {
                         legend { "Статистика" }
-                        "Количество файлов в индексе: " (index_stats.get().doc_cnt)
+                        p {
+                            "Количество файлов в индексе: " (index_stats.get().doc_cnt)
+                        }
+                        p {
+                            "Размер индекса (МиБ): "
+                            (format!("{:.4}", (index_stats.get().index_size as f64) / 1024.0 / 1024.0))
+                        }
+                    }
+
+                    div(class="settings_buttons") {
+                        button(type="button", on:click=move |_| update()) { "Обновить статус" }
+                        button(type="submit", disabled=*is_indexing.get()) { "Индексировать" }
                     }
                 }
             }

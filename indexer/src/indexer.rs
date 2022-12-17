@@ -168,6 +168,7 @@ pub async fn index(State(state): State<Arc<RwLock<ServerState>>>) -> (StatusCode
         return (StatusCode::BAD_REQUEST, "Already indexing".to_owned());
     }
 
+    state.write().await.indexing_status = IndexingStatus::Indexing;
     tokio::spawn(async move {
         // Get files lists from file system and Elasticsearch
         let tmp = Arc::clone(&state);

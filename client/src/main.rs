@@ -51,7 +51,9 @@ async fn main() {
         .manage(RwLock::new(ClientState::new().await))
         .invoke_handler(tauri::generate_handler![
             search::search,
+            status::get_indexing_status,
             status::get_index_stats,
+            status::index,
             settings::get_client_settings,
             settings::set_client_settings,
             settings::get_server_settings,

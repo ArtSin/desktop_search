@@ -1,4 +1,4 @@
-use std::error::Error;
+use std::{error::Error, fmt::Display};
 
 use serde::{Deserialize, Serialize};
 
@@ -9,10 +9,19 @@ pub mod status;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum IndexingStatus {
-    NotStarted,
     Indexing,
     Finished,
     Error(String),
+}
+
+impl Display for IndexingStatus {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Indexing => write!(f, "Идёт индексация"),
+            Self::Finished => write!(f, "Индексация не идёт"),
+            Self::Error(e) => write!(f, "❌ Ошибка индексации: {}", e),
+        }
+    }
 }
 
 impl IndexingStatus {

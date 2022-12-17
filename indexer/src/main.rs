@@ -77,7 +77,7 @@ async fn main() {
                 .timeout(Duration::from_secs(10))
                 .build()
                 .unwrap(),
-            indexing_status: IndexingStatus::NotStarted,
+            indexing_status: IndexingStatus::Finished,
         })))
         .layer(
             ServiceBuilder::new()

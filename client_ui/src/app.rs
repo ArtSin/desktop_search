@@ -18,7 +18,7 @@ extern "C" {
 enum AppTabs {
     #[display(fmt = "Поиск")]
     Search,
-    #[display(fmt = "Статус")]
+    #[display(fmt = "Статус индексации")]
     Status,
     #[display(fmt = "Настройки")]
     Settings,
@@ -30,7 +30,7 @@ impl FromStr for AppTabs {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
             "Поиск" => Ok(AppTabs::Search),
-            "Статус" => Ok(AppTabs::Status),
+            "Статус индексации" => Ok(AppTabs::Status),
             "Настройки" => Ok(AppTabs::Settings),
             _ => Err(std::fmt::Error),
         }
