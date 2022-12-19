@@ -24,6 +24,9 @@ pub struct FileES {
     pub size: u64,
     /// Base16 representation of SHA-256 hash of file
     pub hash: String,
+    /// Fields for image files
+    #[serde(flatten)]
+    pub image_data: Option<ImageData>,
 }
 
 impl PartialEq for FileES {
@@ -32,3 +35,9 @@ impl PartialEq for FileES {
     }
 }
 impl Eq for FileES {}
+
+/// Fields for image files
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ImageData {
+    pub image_embedding: Option<Vec<f32>>,
+}

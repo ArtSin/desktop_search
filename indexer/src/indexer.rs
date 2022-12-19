@@ -1,4 +1,4 @@
-use std::{convert::Infallible, error::Error, future::Future, sync::Arc};
+use std::{future::Future, sync::Arc};
 
 use axum::{extract::State, http::StatusCode, Json};
 use common_lib::{
@@ -14,6 +14,7 @@ use tokio::sync::{
 use tracing_unwrap::ResultExt;
 
 use crate::{
+    parser::parse_file,
     scanner::{get_elasticsearch_files_list, get_file_system_files_list, FileInfo, FilesDiff},
     ServerState,
 };
@@ -52,6 +53,13 @@ pub async fn create_index(es_client: &Elasticsearch) -> Result<(), elasticsearch
                     },
                     "hash": {
                         "type": "keyword"
+                    },
+
+                    "image_embedding": {
+                        "type": "dense_vector",
+                        "dims": 512,
+                        "index": true,
+                        "similarity": "dot_product"
                     }
                 }
             }
@@ -63,17 +71,17 @@ pub async fn create_index(es_client: &Elasticsearch) -> Result<(), elasticsearch
 
 /// Process all files with given function and send results to channel, call function on each error.
 /// Processing is parallel with no more than given number of tasks at once
-async fn streaming_process<T, F, E, Fut, FE>(
+async fn streaming_process<T, F, Fut, FE>(
+    state: Arc<RwLock<ServerState>>,
     tx: UnboundedSender<(Value, Value)>,
     files: Vec<T>,
     process: F,
     mut on_err: FE,
 ) where
     T: Send + 'static,
-    F: Fn(T) -> Fut + Send + Sync + Copy + 'static,
-    E: Error + Send + 'static,
-    Fut: Future<Output = Result<(Value, Value), E>> + Send,
-    FE: FnMut(Box<dyn Error>),
+    F: Fn(Arc<RwLock<ServerState>>, T) -> Fut + Send + Sync + Copy + 'static,
+    Fut: Future<Output = anyhow::Result<(Value, Value)>> + Send,
+    FE: FnMut(anyhow::Error),
 {
     const NNSERVER_BATCH_SIZE: usize = 32; // make into setting
 
@@ -81,45 +89,55 @@ async fn streaming_process<T, F, E, Fut, FE>(
     let mut futures = Vec::new();
     for file in files {
         let permit = Arc::clone(&semaphore).acquire_owned().await.unwrap();
+        let state = Arc::clone(&state);
         let tx = tx.clone();
         futures.push(tokio::spawn(async move {
-            let res = process(file).await;
+            let res = process(state, file).await;
             drop(permit);
             tx.send(res?).unwrap();
-            Ok::<(), E>(())
+            Ok::<(), _>(())
         }));
     }
     for f in futures {
         if let Err(e) = f.await.unwrap() {
-            on_err(Box::new(e));
+            on_err(e);
         }
     }
 }
 
 /// Create operation to add new file to index
-async fn add_new(file: FileInfo) -> Result<(Value, Value), Infallible> {
+async fn add_new(
+    state: Arc<RwLock<ServerState>>,
+    file: FileInfo,
+) -> anyhow::Result<(Value, Value)> {
     tracing::debug!("Add file: {}", file.path.display());
 
     let action = json!({"index": {}});
-    let file_es: FileES = file.try_into().unwrap_or_log();
+    let mut file_es: FileES = file.try_into().unwrap_or_log();
+    parse_file(state, &mut file_es).await?;
     let data = serde_json::to_value(file_es).unwrap_or_log();
     Ok((action, data))
 }
 
 /// Create operation to update file in index given old and new file info
 async fn update_modified(
+    state: Arc<RwLock<ServerState>>,
     (old_file, new_file): (FileInfo, FileInfo),
-) -> Result<(Value, Value), Infallible> {
+) -> anyhow::Result<(Value, Value)> {
     tracing::debug!("Update file: {}", new_file.path.display());
 
     let action = json!({"index": { "_id": old_file._id.unwrap() }});
-    let new_file_es: FileES = new_file.try_into().unwrap_or_log();
+    let mut new_file_es: FileES = new_file.try_into().unwrap_or_log();
+    parse_file(state, &mut new_file_es).await?;
     let data = serde_json::to_value(new_file_es).unwrap_or_log();
     Ok((action, data))
 }
 
 /// Create operation to remove file from index
-async fn remove_old(file: FileInfo) -> Result<(Value, Value), Infallible> {
+async fn remove_old(
+    _state: Arc<RwLock<ServerState>>,
+    file: FileInfo,
+) -> anyhow::Result<(Value, Value)> {
     tracing::debug!("Remove file: {}", file.path.display());
 
     let action = json!({"delete": { "_id": file._id.unwrap() }});
@@ -209,11 +227,32 @@ pub async fn index(State(state): State<Arc<RwLock<ServerState>>>) -> (StatusCode
         };
 
         // Process differences and send operations to channel
-        streaming_process(tx.clone(), diff.added, add_new, &mut on_err).await;
-        streaming_process(tx.clone(), diff.modified, update_modified, &mut on_err).await;
-        streaming_process(tx, diff.removed, remove_old, &mut on_err).await;
+        streaming_process(
+            Arc::clone(&state),
+            tx.clone(),
+            diff.added,
+            add_new,
+            &mut on_err,
+        )
+        .await;
+        streaming_process(
+            Arc::clone(&state),
+            tx.clone(),
+            diff.modified,
+            update_modified,
+            &mut on_err,
+        )
+        .await;
+        streaming_process(
+            Arc::clone(&state),
+            tx,
+            diff.removed,
+            remove_old,
+            &mut on_err,
+        )
+        .await;
         if let Err(e) = bulk_send_f.await.unwrap_or_log() {
-            on_err(Box::new(e));
+            on_err(e.into());
         }
 
         state.write().await.indexing_status = new_indexing_status;

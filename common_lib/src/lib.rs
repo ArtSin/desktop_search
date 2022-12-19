@@ -1,4 +1,4 @@
-use std::{error::Error, fmt::Display};
+use std::fmt::Display;
 
 use serde::{Deserialize, Serialize};
 
@@ -6,6 +6,9 @@ pub mod elasticsearch;
 pub mod search;
 pub mod settings;
 pub mod status;
+
+#[cfg(not(target_arch = "wasm32"))]
+pub mod embeddings;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum IndexingStatus {
@@ -29,7 +32,7 @@ impl IndexingStatus {
         *self != Self::Indexing
     }
 
-    pub fn add_error(&mut self, e: Box<dyn Error>) {
+    pub fn add_error(&mut self, e: anyhow::Error) {
         *self = match self {
             Self::Error(old_e) => Self::Error(format!("{}\n{}", old_e, e)),
             _ => Self::Error(e.to_string()),

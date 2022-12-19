@@ -18,6 +18,7 @@ use crate::{
 };
 
 mod indexer;
+mod parser;
 mod scanner;
 mod settings;
 

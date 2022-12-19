@@ -1,10 +1,12 @@
 use common_lib::{
     elasticsearch::{FileES, ELASTICSEARCH_INDEX},
+    embeddings::get_image_search_text_embedding,
     search::{SearchRequest, SearchResponse},
 };
 use elasticsearch::{Elasticsearch, SearchParts};
 use serde_json::{json, Value};
 use tauri::async_runtime::RwLock;
+use url::Url;
 
 use crate::ClientState;
 
@@ -12,7 +14,36 @@ use self::query::{range, simple_query_string};
 
 const RESULTS_PER_PAGE: u32 = 20;
 
-fn get_request_body(search_request: SearchRequest) -> Value {
+async fn get_request_body(
+    reqwest_client: &reqwest::Client,
+    nnserver_url: Url,
+    search_request: SearchRequest,
+) -> anyhow::Result<Value> {
+    const KNN_CANDIDATES_MULTIPLIER: u32 = 10;
+    const IMAGE_SEARCH_BOOST: f32 = 0.5;
+
+    let mut request_body = Value::Object(serde_json::Map::new());
+
+    if search_request.image_search_enabled {
+        let image_search_text_embedding = get_image_search_text_embedding(
+            reqwest_client,
+            nnserver_url,
+            search_request.query.clone(),
+        )
+        .await?;
+
+        request_body.as_object_mut().unwrap().insert(
+            "knn".to_owned(),
+            json!({
+                "field": "image_embedding",
+                "query_vector": image_search_text_embedding.embedding,
+                "k": RESULTS_PER_PAGE,
+                "num_candidates": RESULTS_PER_PAGE * KNN_CANDIDATES_MULTIPLIER,
+                "boost": IMAGE_SEARCH_BOOST
+            }),
+        );
+    }
+
     let es_request_must = [
         Some(simple_query_string(search_request.query, &["path", "hash"])),
         (search_request.modified_from.is_some() || search_request.modified_to.is_some()).then(
@@ -31,13 +62,21 @@ fn get_request_body(search_request: SearchRequest) -> Value {
     .flatten()
     .collect::<Vec<_>>();
 
-    json!({
-        "query": {
+    let query_boost = if search_request.image_search_enabled {
+        1.0 - IMAGE_SEARCH_BOOST
+    } else {
+        1.0
+    };
+    request_body.as_object_mut().unwrap().insert(
+        "query".to_owned(),
+        json!({
             "bool": {
                 "must": es_request_must,
+                "boost": query_boost
             }
-        }
-    })
+        }),
+    );
+    Ok(request_body)
 }
 
 async fn get_es_response(
@@ -74,7 +113,11 @@ pub async fn search(
     state: tauri::State<'_, RwLock<ClientState>>,
     search_request: SearchRequest,
 ) -> Result<SearchResponse, String> {
-    let es_request_body = get_request_body(search_request);
+    let reqwest_client = &state.read().await.reqwest_client;
+    let nnserver_url = state.read().await.server_settings.nnserver_url.clone();
+    let es_request_body = get_request_body(reqwest_client, nnserver_url, search_request)
+        .await
+        .map_err(|e| e.to_string())?;
     let es_response_body = get_es_response(&state.read().await.es_client, 0, es_request_body)
         .await
         .map_err(|e| e.to_string())?;

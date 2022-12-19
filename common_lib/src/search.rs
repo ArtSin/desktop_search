@@ -6,6 +6,7 @@ use crate::elasticsearch::FileES;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SearchRequest {
     pub query: String,
+    pub image_search_enabled: bool,
     pub modified_from: Option<DateTime<Utc>>,
     pub modified_to: Option<DateTime<Utc>>,
     pub size_from: Option<u64>,

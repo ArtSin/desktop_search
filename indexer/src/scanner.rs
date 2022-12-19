@@ -54,6 +54,7 @@ impl TryFrom<FileInfo> for FileES {
             modified: x.modified,
             size: x.size,
             hash,
+            image_data: None,
         })
     }
 }

@@ -7,6 +7,7 @@ edition = "2021"
 
 [dependencies]
 common_lib = { path = "../common_lib" }
+anyhow.workspace = true
 tokio.workspace = true
 reqwest.workspace = true
 serde.workspace = true
@@ -17,6 +18,7 @@ sha2.workspace = true
 base16ct.workspace = true
 chrono.workspace = true
 once_cell.workspace = true
+async-trait.workspace = true
 clap = { version = "4.0.27", features = ["derive"] }
 axum = "0.6.0"
 tower = { version = "0.4.13", features = ["timeout"] }

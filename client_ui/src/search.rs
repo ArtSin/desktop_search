@@ -24,6 +24,8 @@ pub fn Search<G: Html>(cx: Scope) -> View<G> {
 
     let query = create_signal(cx, String::new());
 
+    let image_search_enabled = create_signal(cx, true);
+
     let modified_from = create_signal(cx, None);
     let modified_to = create_signal(cx, None);
     let modified_valid = create_signal(cx, true);
@@ -37,10 +39,11 @@ pub fn Search<G: Html>(cx: Scope) -> View<G> {
 
     let search = move |_| {
         spawn_local_scoped(cx, async move {
-            status_str.set("".to_owned());
+            status_str.set("⏳ Загрузка...".to_owned());
 
             let search_request = SearchRequest {
                 query: (*query.get()).clone(),
+                image_search_enabled: *image_search_enabled.get(),
                 modified_from: *modified_from.get(),
                 modified_to: *modified_to.get(),
                 size_from: size_from.get().map(|x| (x * 1024.0 * 1024.0) as u64),
@@ -79,8 +82,15 @@ pub fn Search<G: Html>(cx: Scope) -> View<G> {
         div(class="main_container") {
             aside {
                 form(id="search", on:submit=search, action="javascript:void(0);") {
+                    fieldset {
+                        legend { "Тип поиска" }
+                        CheckboxFilter(text="Семантический поиск по изображениям", id="image_search",
+                            value_enabled=image_search_enabled)
+                    }
+
                     DateTimeFilter(legend="Дата и время изменения", id="modified",
                         value_from=modified_from, value_to=modified_to, valid=modified_valid)
+
                     NumberFilter(legend="Размер файла (МиБ)", id="size",
                         min=MAX_FILE_SIZE_MIN, max=MAX_FILE_SIZE_MAX,
                         value_from=size_from, value_to=size_to, valid=size_valid)
@@ -90,6 +100,23 @@ pub fn Search<G: Html>(cx: Scope) -> View<G> {
                 StatusMessage(status_str=status_str)
                 SearchResults(search_results=search_results)
             }
+        }
+    }
+}
+
+#[derive(Prop)]
+struct CheckboxFilterProps<'a> {
+    text: &'static str,
+    id: &'static str,
+    value_enabled: &'a Signal<bool>,
+}
+
+#[component]
+fn CheckboxFilter<'a, G: Html>(cx: Scope<'a>, props: CheckboxFilterProps<'a>) -> View<G> {
+    view! { cx,
+        div(class="filter_field") {
+            input(type="checkbox", id=props.id, name=props.id, bind:checked=props.value_enabled) {}
+            label(for=props.id) { (props.text) }
         }
     }
 }
