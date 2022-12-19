@@ -10,6 +10,7 @@ use elasticsearch::{http::transport::Transport, Elasticsearch};
 use settings::read_settings_file;
 use tauri::async_runtime::RwLock;
 
+mod assets;
 mod search;
 mod settings;
 mod status;
@@ -49,6 +50,7 @@ async fn main() {
     tauri::async_runtime::set(tokio::runtime::Handle::current());
     tauri::Builder::default()
         .manage(RwLock::new(ClientState::new().await))
+        .register_uri_scheme_protocol("localfile", assets::get_local_file)
         .invoke_handler(tauri::generate_handler![
             search::search,
             status::get_indexing_status,

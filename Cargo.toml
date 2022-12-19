@@ -9,6 +9,7 @@ toml = "0.5.9"
 reqwest = { version = "0.11.13", features = ["json", "stream"] }
 tokio = { version = "1.22.0", features = ["full"] }
 url = { version = "2.3.1", features = ["serde"] }
+percent-encoding = "2.2.0"
 derive_more = "0.99.17"
 elasticsearch = "8.5.0-alpha.1"
 sha2 = "0.10.6"

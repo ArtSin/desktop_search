@@ -54,6 +54,7 @@ impl TryFrom<FileInfo> for FileES {
             modified: x.modified,
             size: x.size,
             hash,
+            content_type: String::new(),
             image_data: None,
         })
     }
@@ -187,7 +188,7 @@ pub async fn get_elasticsearch_files_list(
 
     #[derive(Serialize)]
     struct RequestBody {
-        _source: Vec<&'static str>,
+        _source: Value,
         query: Value,
         pit: Value,
         sort: Vec<Value>,
@@ -213,7 +214,9 @@ pub async fn get_elasticsearch_files_list(
             .size(ELASTICSEARCH_MAX_SIZE)
             .track_total_hits(false)
             .body(RequestBody {
-                _source: vec!["path", "modified", "size", "hash"],
+                _source: json!({
+                    "excludes": ["image_embedding"]
+                }),
                 query: json!({
                     "match_all": {}
                 }),

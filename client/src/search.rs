@@ -1,5 +1,7 @@
+use std::cmp::min;
+
 use common_lib::{
-    elasticsearch::{FileES, ELASTICSEARCH_INDEX},
+    elasticsearch::{FileES, ELASTICSEARCH_INDEX, ELASTICSEARCH_MAX_SIZE},
     embeddings::get_image_search_text_embedding,
     search::{SearchRequest, SearchResponse},
 };
@@ -32,13 +34,17 @@ async fn get_request_body(
         )
         .await?;
 
+        let num_candidates = min(
+            RESULTS_PER_PAGE * KNN_CANDIDATES_MULTIPLIER,
+            ELASTICSEARCH_MAX_SIZE as u32,
+        );
         request_body.as_object_mut().unwrap().insert(
             "knn".to_owned(),
             json!({
                 "field": "image_embedding",
                 "query_vector": image_search_text_embedding.embedding,
                 "k": RESULTS_PER_PAGE,
-                "num_candidates": RESULTS_PER_PAGE * KNN_CANDIDATES_MULTIPLIER,
+                "num_candidates": num_candidates,
                 "boost": IMAGE_SEARCH_BOOST
             }),
         );

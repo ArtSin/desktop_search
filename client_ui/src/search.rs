@@ -6,6 +6,7 @@ use common_lib::{
 use serde::Serialize;
 use serde_wasm_bindgen::{from_value, to_value};
 use sycamore::{futures::spawn_local_scoped, prelude::*};
+use url::Url;
 
 use crate::{
     app::{invoke, StatusMessage},
@@ -285,9 +286,19 @@ fn SearchResults<'a, G: Html>(
             view=move |cx, item| {
                 let file_name = item.path.file_name().unwrap().to_string_lossy().into_owned();
                 let path = item.path.to_string_lossy().into_owned();
+                let path_ = path.clone();
 
                 view! { cx,
                     article(class="search_result") {
+                        (if item.content_type.starts_with("image") {
+                            let img_url = Url::parse(&("localfile://localhost".to_owned() + &path_)).unwrap();
+                            view! { cx,
+                                img(src=(img_url)) {}
+                            }
+                        } else {
+                            view! { cx, }
+                        })
+
                         h3 {
                             (file_name)
                         }

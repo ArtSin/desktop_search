@@ -24,6 +24,8 @@ pub struct FileES {
     pub size: u64,
     /// Base16 representation of SHA-256 hash of file
     pub hash: String,
+    /// MIME content type
+    pub content_type: String,
     /// Fields for image files
     #[serde(flatten)]
     pub image_data: Option<ImageData>,

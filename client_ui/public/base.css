@@ -140,10 +140,17 @@ article.search_result {
     padding: 0 10px;
     border: 1px solid var(--focus);
     border-radius: 6px;
+    overflow: auto;
 }
 
 article.search_result>h3 {
     margin-top: 12px;
+}
+
+article.search_result>img {
+    float: right;
+    max-width: 25%;
+    margin: 12px 0.5em 0.5em 0.5em;
 }
 
 p {

@@ -18,6 +18,7 @@ reqwest.workspace = true
 tokio.workspace = true
 elasticsearch.workspace = true
 url.workspace = true
+percent-encoding.workspace = true
 tauri = { version = "1.2.1", features = ["api-all"] }
 
 [features]

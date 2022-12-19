@@ -54,6 +54,9 @@ pub async fn create_index(es_client: &Elasticsearch) -> Result<(), elasticsearch
                     "hash": {
                         "type": "keyword"
                     },
+                    "content_type": {
+                        "type": "keyword"
+                    },
 
                     "image_embedding": {
                         "type": "dense_vector",

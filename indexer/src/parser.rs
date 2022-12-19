@@ -22,7 +22,7 @@ pub trait Parser {
     ) -> anyhow::Result<()>;
 }
 
-#[derive(Deserialize)]
+#[derive(Default, Deserialize)]
 pub struct Metadata {
     #[serde(rename = "Content-Type")]
     content_type: String,
@@ -32,6 +32,10 @@ async fn get_metadata(
     state: Arc<RwLock<ServerState>>,
     file: &mut FileES,
 ) -> anyhow::Result<Metadata> {
+    if file.size == 0 {
+        return Ok(Metadata::default());
+    }
+
     let mut tika_meta_url = state.read().await.settings.other.tika_url.clone();
     tika_meta_url.set_path("meta");
     let req_builder = state.read().await.reqwest_client.put(tika_meta_url);
@@ -47,6 +51,8 @@ async fn get_metadata(
 
 pub async fn parse_file(state: Arc<RwLock<ServerState>>, file: &mut FileES) -> anyhow::Result<()> {
     let metadata = get_metadata(Arc::clone(&state), file).await?;
+    file.content_type = metadata.content_type.clone();
+
     for parser in PARSERS {
         if parser.is_supported_content_type(&metadata.content_type) {
             parser.parse(Arc::clone(&state), file, &metadata).await?;
