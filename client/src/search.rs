@@ -1,13 +1,13 @@
-use std::cmp::min;
+use std::{cmp::min, path::PathBuf};
 
 use common_lib::{
     elasticsearch::{FileES, ELASTICSEARCH_INDEX, ELASTICSEARCH_MAX_SIZE},
-    embeddings::get_image_search_text_embedding,
-    search::{SearchRequest, SearchResponse},
+    embeddings::{get_image_search_image_embedding, get_image_search_text_embedding},
+    search::{ImageSearchRequest, QueryType, SearchRequest, SearchResponse, TextSearchRequest},
 };
 use elasticsearch::{Elasticsearch, SearchParts};
 use serde_json::{json, Value};
-use tauri::async_runtime::RwLock;
+use tauri::{api::dialog::blocking::FileDialogBuilder, async_runtime::RwLock};
 use url::Url;
 
 use crate::ClientState;
@@ -15,6 +15,11 @@ use crate::ClientState;
 use self::query::{range, simple_query_string};
 
 const RESULTS_PER_PAGE: u32 = 20;
+
+#[tauri::command]
+pub async fn pick_file() -> Option<PathBuf> {
+    FileDialogBuilder::new().pick_file()
+}
 
 async fn get_request_body(
     reqwest_client: &reqwest::Client,
@@ -25,33 +30,61 @@ async fn get_request_body(
     const IMAGE_SEARCH_BOOST: f32 = 0.5;
 
     let mut request_body = Value::Object(serde_json::Map::new());
+    let num_candidates = min(
+        RESULTS_PER_PAGE * KNN_CANDIDATES_MULTIPLIER,
+        ELASTICSEARCH_MAX_SIZE as u32,
+    );
 
-    if search_request.image_search_enabled {
-        let image_search_text_embedding = get_image_search_text_embedding(
-            reqwest_client,
-            nnserver_url,
-            search_request.query.clone(),
-        )
-        .await?;
+    match search_request.query {
+        QueryType::Text(TextSearchRequest {
+            ref query,
+            image_search_enabled,
+        }) => {
+            if image_search_enabled {
+                let image_search_text_embedding =
+                    get_image_search_text_embedding(reqwest_client, nnserver_url, query.clone())
+                        .await?;
 
-        let num_candidates = min(
-            RESULTS_PER_PAGE * KNN_CANDIDATES_MULTIPLIER,
-            ELASTICSEARCH_MAX_SIZE as u32,
-        );
-        request_body.as_object_mut().unwrap().insert(
-            "knn".to_owned(),
-            json!({
-                "field": "image_embedding",
-                "query_vector": image_search_text_embedding.embedding,
-                "k": RESULTS_PER_PAGE,
-                "num_candidates": num_candidates,
-                "boost": IMAGE_SEARCH_BOOST
-            }),
-        );
+                request_body.as_object_mut().unwrap().insert(
+                    "knn".to_owned(),
+                    json!({
+                        "field": "image_embedding",
+                        "query_vector": image_search_text_embedding.embedding,
+                        "k": RESULTS_PER_PAGE,
+                        "num_candidates": num_candidates,
+                        "boost": IMAGE_SEARCH_BOOST
+                    }),
+                );
+            }
+        }
+        QueryType::Image(ImageSearchRequest { ref image_path }) => {
+            let image_search_image_embedding =
+                get_image_search_image_embedding(reqwest_client, nnserver_url, image_path).await?;
+            let embedding = image_search_image_embedding
+                .embedding
+                .ok_or_else(|| anyhow::anyhow!("Incorrect image"))?;
+
+            request_body.as_object_mut().unwrap().insert(
+                "knn".to_owned(),
+                json!({
+                    "field": "image_embedding",
+                    "query_vector": embedding,
+                    "k": RESULTS_PER_PAGE,
+                    "num_candidates": num_candidates,
+                    "boost": IMAGE_SEARCH_BOOST
+                }),
+            );
+        }
     }
 
+    let query_string = match search_request.query {
+        QueryType::Text(TextSearchRequest { ref query, .. }) => {
+            Some(simple_query_string(query.clone(), &["path", "hash"]))
+        }
+        _ => None,
+    };
     let es_request_must = [
-        Some(simple_query_string(search_request.query, &["path", "hash"])),
+        query_string,
         (search_request.modified_from.is_some() || search_request.modified_to.is_some()).then(
             || {
                 range(
@@ -68,10 +101,18 @@ async fn get_request_body(
     .flatten()
     .collect::<Vec<_>>();
 
-    let query_boost = if search_request.image_search_enabled {
-        1.0 - IMAGE_SEARCH_BOOST
-    } else {
-        1.0
+    let query_boost = match search_request.query {
+        QueryType::Text(TextSearchRequest {
+            image_search_enabled,
+            ..
+        }) => {
+            if image_search_enabled {
+                1.0 - IMAGE_SEARCH_BOOST
+            } else {
+                1.0
+            }
+        }
+        QueryType::Image(_) => 1.0,
     };
     request_body.as_object_mut().unwrap().insert(
         "query".to_owned(),

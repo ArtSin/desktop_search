@@ -46,11 +46,14 @@ nav>ul>li>a:hover {
 }
 
 header {
+    margin: 20px auto;
+    padding: 0 10px;
+}
+
+header>div {
     display: flex;
     justify-content: center;
     flex-wrap: wrap;
-    margin: 20px auto;
-    padding: 0 10px;
 }
 
 @media (max-width: 450px) {
@@ -61,6 +64,12 @@ header {
 
 #query {
     flex-grow: 1;
+}
+
+#query_image {
+    margin: 1em;
+    max-width: 300px;
+    max-height: 300px;
 }
 
 div.main_container {
@@ -89,19 +98,14 @@ div.filter_field {
     align-items: center;
 }
 
-/*input.time_field {
-    width: 5em;
-}
-
-div.radio_field {
+div.radio_checkbox_field {
     display: flex;
     align-items: center;
 }
 
-div.radio_field>input {
+div.radio_checkbox_field>input {
     flex: 0 0 auto;
 }
-*/
 
 main {
     margin: 0 1em;

@@ -1,7 +1,9 @@
+use std::path::PathBuf;
+
 use chrono::{DateTime, Local, TimeZone, Utc};
 use common_lib::{
     elasticsearch::FileES,
-    search::{SearchRequest, SearchResponse},
+    search::{ImageSearchRequest, SearchRequest, SearchResponse, TextSearchRequest},
 };
 use serde::Serialize;
 use serde_wasm_bindgen::{from_value, to_value};
@@ -12,6 +14,12 @@ use crate::{
     app::{invoke, StatusMessage},
     settings::{MAX_FILE_SIZE_MAX, MAX_FILE_SIZE_MIN},
 };
+
+#[derive(Debug, Clone, Copy)]
+enum QueryType {
+    Text,
+    Image,
+}
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -24,7 +32,9 @@ pub fn Search<G: Html>(cx: Scope) -> View<G> {
     let status_str = create_signal(cx, String::new());
 
     let query = create_signal(cx, String::new());
+    let query_image_path = create_signal(cx, PathBuf::new());
 
+    let query_type = create_signal(cx, QueryType::Text);
     let image_search_enabled = create_signal(cx, true);
 
     let modified_from = create_signal(cx, None);
@@ -38,13 +48,36 @@ pub fn Search<G: Html>(cx: Scope) -> View<G> {
 
     let search_results = create_signal(cx, Vec::new());
 
+    let select_file = move |_| {
+        spawn_local_scoped(cx, async {
+            let path_option: Option<PathBuf> = from_value(
+                invoke("pick_file", wasm_bindgen::JsValue::UNDEFINED)
+                    .await
+                    .unwrap(),
+            )
+            .unwrap();
+
+            if let Some(path) = path_option {
+                query_image_path.set(path);
+            }
+        });
+    };
+
     let search = move |_| {
         spawn_local_scoped(cx, async move {
             status_str.set("⏳ Загрузка...".to_owned());
 
+            let search_query = match *query_type.get() {
+                QueryType::Text => common_lib::search::QueryType::Text(TextSearchRequest {
+                    query: (*query.get()).clone(),
+                    image_search_enabled: *image_search_enabled.get(),
+                }),
+                QueryType::Image => common_lib::search::QueryType::Image(ImageSearchRequest {
+                    image_path: (*query_image_path.get()).clone(),
+                }),
+            };
             let search_request = SearchRequest {
-                query: (*query.get()).clone(),
-                image_search_enabled: *image_search_enabled.get(),
+                query: search_query,
                 modified_from: *modified_from.get(),
                 modified_to: *modified_to.get(),
                 size_from: size_from.get().map(|x| (x * 1024.0 * 1024.0) as u64),
@@ -76,18 +109,61 @@ pub fn Search<G: Html>(cx: Scope) -> View<G> {
 
     view! { cx,
         header {
-            input(form="search", type="search", id="query", name="query",
-                placeholder="Искать...", bind:value=query)
-            button(form="search", type="submit", disabled=*any_invalid.get()) { "Искать" }
+            (match *query_type.get() {
+                QueryType::Text => {
+                    view! { cx,
+                        div {
+                            input(form="search", type="search", id="query", name="query",
+                                placeholder="Поиск...", bind:value=query)
+                            button(form="search", type="submit", disabled=*any_invalid.get()) { "Искать" }
+                        }
+                    }
+                }
+                QueryType::Image => {
+                    view! { cx,
+                        div {
+                            button(form="search", type="button", on:click=select_file) { "Выбрать файл" }
+                            button(form="search", type="submit", disabled=*any_invalid.get()) { "Искать" }
+                        }
+                        (if !query_image_path.get().as_os_str().is_empty() {
+                            let path = query_image_path.get().to_string_lossy().into_owned();
+                            let img_url = Url::parse(&("localfile://localhost".to_owned() + &path)).unwrap();
+                            view! { cx,
+                                div {
+                                    img(src=img_url, id="query_image") {}
+                                }
+                            }
+                        } else {
+                            view! { cx, }
+                        })
+                    }
+                }
+            })
         }
         div(class="main_container") {
             aside {
                 form(id="search", on:submit=search, action="javascript:void(0);") {
                     fieldset {
-                        legend { "Тип поиска" }
-                        CheckboxFilter(text="Семантический поиск по изображениям", id="image_search",
-                            value_enabled=image_search_enabled)
+                        legend { "Тип запроса" }
+                        RadioFilter(text="По тексту", name="query_type", id="query_type_text",
+                            value_signal=query_type, value=QueryType::Text, default=true)
+                        RadioFilter(text="По изображению", name="query_type", id="query_type_image",
+                            value_signal=query_type, value=QueryType::Image, default=false)
                     }
+                    (match *query_type.get() {
+                        QueryType::Text => {
+                            view! { cx,
+                                fieldset {
+                                    legend { "Тип поиска" }
+                                    CheckboxFilter(text="Семантический поиск по изображениям", id="image_search",
+                                        value_enabled=image_search_enabled)
+                                }
+                            }
+                        }
+                        QueryType::Image => {
+                            view! { cx, }
+                        }
+                    })
 
                     DateTimeFilter(legend="Дата и время изменения", id="modified",
                         value_from=modified_from, value_to=modified_to, valid=modified_valid)
@@ -106,6 +182,30 @@ pub fn Search<G: Html>(cx: Scope) -> View<G> {
 }
 
 #[derive(Prop)]
+struct RadioFilterProps<'a, T: Copy> {
+    text: &'static str,
+    name: &'static str,
+    id: &'static str,
+    value_signal: &'a Signal<T>,
+    value: T,
+    default: bool,
+}
+
+#[component]
+fn RadioFilter<'a, T: Copy, G: Html>(cx: Scope<'a>, props: RadioFilterProps<'a, T>) -> View<G> {
+    let update = move |_| {
+        props.value_signal.set(props.value);
+    };
+    view! { cx,
+        div(class="radio_checkbox_field") {
+            input(type="radio", id=props.id, name=props.name, value=props.id,
+                on:change=update, checked=props.default) {}
+            label(for=props.id) { (props.text) }
+        }
+    }
+}
+
+#[derive(Prop)]
 struct CheckboxFilterProps<'a> {
     text: &'static str,
     id: &'static str,
@@ -115,7 +215,7 @@ struct CheckboxFilterProps<'a> {
 #[component]
 fn CheckboxFilter<'a, G: Html>(cx: Scope<'a>, props: CheckboxFilterProps<'a>) -> View<G> {
     view! { cx,
-        div(class="filter_field") {
+        div(class="radio_checkbox_field") {
             input(type="checkbox", id=props.id, name=props.id, bind:checked=props.value_enabled) {}
             label(for=props.id) { (props.text) }
         }
