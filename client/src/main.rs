@@ -52,6 +52,7 @@ async fn main() {
         .manage(RwLock::new(ClientState::new().await))
         .register_uri_scheme_protocol("localfile", assets::get_local_file)
         .invoke_handler(tauri::generate_handler![
+            search::open_path,
             search::pick_file,
             search::search,
             status::get_indexing_status,

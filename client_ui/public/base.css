@@ -86,10 +86,9 @@ div.main_container {
 }
 
 aside {
-    max-width: 15em;
+    max-width: 17em;
     margin: 1em;
     flex-shrink: 0;
-    display: flex;
 }
 
 div.filter_field {
@@ -105,6 +104,30 @@ div.radio_checkbox_field {
 
 div.radio_checkbox_field>input {
     flex: 0 0 auto;
+}
+
+#preview {
+    display: flex;
+    flex-direction: column;
+    position: sticky;
+    top: 0;
+    height: 100vh;
+    width: 40%;
+    max-width: unset;
+    padding: 6px;
+    border: 1px solid var(--focus);
+    border-radius: 6px;
+}
+
+#preview>button {
+    align-self: flex-end;
+}
+
+#preview>object {
+    min-width: 0;
+    min-height: 0;
+    flex: 1 1 auto;
+    object-fit: scale-down;
 }
 
 main {

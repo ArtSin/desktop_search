@@ -21,6 +21,17 @@ enum QueryType {
     Image,
 }
 
+#[derive(Default)]
+struct PreviewData {
+    path: PathBuf,
+    content_type: String,
+}
+
+#[derive(Serialize)]
+struct OpenPathArgs {
+    path: PathBuf,
+}
+
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct SearchRequestArgs<'a> {
@@ -37,6 +48,7 @@ pub fn Search<G: Html>(cx: Scope) -> View<G> {
     let query_type = create_signal(cx, QueryType::Text);
     let image_search_enabled = create_signal(cx, true);
 
+    let display_filters = create_signal(cx, true);
     let modified_from = create_signal(cx, None);
     let modified_to = create_signal(cx, None);
     let modified_valid = create_signal(cx, true);
@@ -46,7 +58,17 @@ pub fn Search<G: Html>(cx: Scope) -> View<G> {
 
     let any_invalid = create_memo(cx, || !*modified_valid.get() || !*size_valid.get());
 
+    let display_preview = create_signal(cx, false);
+    let preview_data = create_signal(cx, PreviewData::default());
+
     let search_results = create_signal(cx, Vec::new());
+
+    let toggle_filters = move |_| {
+        display_filters.set(!*display_filters.get());
+    };
+    let hide_preview = move |_| {
+        display_preview.set(false);
+    };
 
     let select_file = move |_| {
         spawn_local_scoped(cx, async {
@@ -113,6 +135,7 @@ pub fn Search<G: Html>(cx: Scope) -> View<G> {
                 QueryType::Text => {
                     view! { cx,
                         div {
+                            button(form="search", type="button", on:click=toggle_filters) { "☰" }
                             input(form="search", type="search", id="query", name="query",
                                 placeholder="Поиск...", bind:value=query)
                             button(form="search", type="submit", disabled=*any_invalid.get()) { "Искать" }
@@ -122,6 +145,7 @@ pub fn Search<G: Html>(cx: Scope) -> View<G> {
                 QueryType::Image => {
                     view! { cx,
                         div {
+                            button(form="search", type="button", on:click=toggle_filters) { "☰" }
                             button(form="search", type="button", on:click=select_file) { "Выбрать файл" }
                             button(form="search", type="submit", disabled=*any_invalid.get()) { "Искать" }
                         }
@@ -141,7 +165,7 @@ pub fn Search<G: Html>(cx: Scope) -> View<G> {
             })
         }
         div(class="main_container") {
-            aside {
+            aside(style={if *display_filters.get() { "display: block;" } else { "display: none;" }}) {
                 form(id="search", on:submit=search, action="javascript:void(0);") {
                     fieldset {
                         legend { "Тип запроса" }
@@ -165,18 +189,43 @@ pub fn Search<G: Html>(cx: Scope) -> View<G> {
                         }
                     })
 
-                    DateTimeFilter(legend="Дата и время изменения", id="modified",
-                        value_from=modified_from, value_to=modified_to, valid=modified_valid)
+                    details {
+                        summary { "Основные свойства файла" }
 
-                    NumberFilter(legend="Размер файла (МиБ)", id="size",
-                        min=MAX_FILE_SIZE_MIN, max=MAX_FILE_SIZE_MAX,
-                        value_from=size_from, value_to=size_to, valid=size_valid)
+                        DateTimeFilter(legend="Дата и время изменения", id="modified",
+                            value_from=modified_from, value_to=modified_to, valid=modified_valid)
+
+                        NumberFilter(legend="Размер файла (МиБ)", id="size",
+                            min=MAX_FILE_SIZE_MIN, max=MAX_FILE_SIZE_MAX,
+                            value_from=size_from, value_to=size_to, valid=size_valid)
+                    }
                 }
             }
+
             main {
                 StatusMessage(status_str=status_str)
-                SearchResults(search_results=search_results)
+                SearchResults(search_results=search_results, display_preview=display_preview,
+                    preview_data=preview_data)
             }
+
+            (if *display_preview.get() {
+                let path = preview_data.get().path.to_string_lossy().into_owned();
+                let mut img_url = Url::parse(&("localfile://localhost".to_owned() + &path)).unwrap();
+                let content_type = preview_data.get().content_type.clone();
+                img_url.query_pairs_mut().append_pair("content_type", &content_type);
+                view! { cx,
+                    aside(id="preview") {
+                        button(form="search", type="button", on:click=hide_preview) { "✖" }
+                        object(data=img_url, type=content_type) {
+                            p(style="text-align: center;") {
+                                "Предпросмотр файла не поддерживается"
+                            }
+                        }
+                    }
+                }
+            } else {
+                view! { cx, }
+            })
         }
     }
 }
@@ -379,6 +428,8 @@ fn NumberFilter<'a, G: Html>(cx: Scope<'a>, props: NumberFilterProps<'a>) -> Vie
 fn SearchResults<'a, G: Html>(
     cx: Scope<'a>,
     search_results: &'a ReadSignal<Vec<FileES>>,
+    display_preview: &'a Signal<bool>,
+    preview_data: &'a Signal<PreviewData>,
 ) -> View<G> {
     view! { cx,
         Keyed(
@@ -387,6 +438,37 @@ fn SearchResults<'a, G: Html>(
                 let file_name = item.path.file_name().unwrap().to_string_lossy().into_owned();
                 let path = item.path.to_string_lossy().into_owned();
                 let path_ = path.clone();
+                let path__ = item.path.clone();
+                let path___ = item.path.clone();
+                let content_type = item.content_type.clone();
+
+                let show_preview = move |_| {
+                    preview_data.set(PreviewData {
+                        path: item.path.clone(),
+                        content_type: content_type.clone()
+                    });
+                    display_preview.set(true);
+                };
+                let open_path = move |path| {
+                    spawn_local_scoped(cx, async move {
+                        invoke(
+                            "open_path",
+                            to_value(&OpenPathArgs {
+                                path,
+                            })
+                            .unwrap(),
+                        )
+                        .await;
+                    })
+                };
+                let open_file = move |_| {
+                    let path = path__.clone();
+                    open_path(path)
+                };
+                let open_folder = move |_| {
+                    let path = path___.parent().unwrap().to_path_buf();
+                    open_path(path)
+                };
 
                 view! { cx,
                     article(class="search_result") {
@@ -405,15 +487,24 @@ fn SearchResults<'a, G: Html>(
                         p(style="overflow-wrap: anywhere;") {
                             "Полный путь: " (path)
                         }
-                        p {
-                            "Изменено: " (item.modified.with_timezone(&Local))
+                        div {
+                            button(form="search", type="button", on:click=show_preview) { "Показать" }
+                            button(form="search", type="button", on:click=open_file) { "Открыть" }
+                            button(form="search", type="button", on:click=open_folder) { "Открыть папку" }
                         }
-                        p {
-                            "Размер (МиБ): "
-                            (format!("{:.4}", (item.size as f64) / 1024.0 / 1024.0))
-                        }
-                        p(style="overflow-wrap: anywhere;") {
-                            "Хеш SHA-256: " (item.hash)
+                        details {
+                            summary { "Основные свойства файла" }
+
+                            p {
+                                "Изменено: " (item.modified.with_timezone(&Local))
+                            }
+                            p {
+                                "Размер (МиБ): "
+                                (format!("{:.4}", (item.size as f64) / 1024.0 / 1024.0))
+                            }
+                            p(style="overflow-wrap: anywhere;") {
+                                "Хеш SHA-256: " (item.hash)
+                            }
                         }
                     }
                 }

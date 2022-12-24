@@ -17,6 +17,11 @@ use self::query::{range, simple_query_string};
 const RESULTS_PER_PAGE: u32 = 20;
 
 #[tauri::command]
+pub async fn open_path(path: PathBuf) -> Result<(), String> {
+    open::that(path).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 pub async fn pick_file() -> Option<PathBuf> {
     FileDialogBuilder::new().pick_file()
 }
