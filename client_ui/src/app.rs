@@ -8,6 +8,10 @@ use web_sys::HtmlElement;
 
 use crate::{search::Search, settings::Settings, status::Status};
 
+use self::widgets::{StatusDialog, StatusDialogState};
+
+pub mod widgets;
+
 #[wasm_bindgen]
 extern "C" {
     #[wasm_bindgen(catch, js_namespace = ["window", "__TAURI__", "tauri"])]
@@ -39,6 +43,7 @@ impl FromStr for AppTabs {
 
 #[component]
 pub fn App<G: Html>(cx: Scope) -> View<G> {
+    let status_dialog_state = create_signal(cx, StatusDialogState::None);
     let tabs = create_signal(
         cx,
         vec![AppTabs::Search, AppTabs::Status, AppTabs::Settings],
@@ -70,28 +75,15 @@ pub fn App<G: Html>(cx: Scope) -> View<G> {
         }
 
         div(style={if *curr_tab.get().as_ref() == AppTabs::Search { "display: block;" } else { "display: none;" }}) {
-            Search()
+            Search(status_dialog_state=status_dialog_state)
         }
         div(style={if *curr_tab.get().as_ref() == AppTabs::Status { "display: block;" } else { "display: none;" }}) {
-            Status()
+            Status(status_dialog_state=status_dialog_state)
         }
         div(style={if *curr_tab.get().as_ref() == AppTabs::Settings { "display: block;" } else { "display: none;" }}) {
-            Settings()
+            Settings(status_dialog_state=status_dialog_state)
         }
-    }
-}
 
-#[component(inline_props)]
-pub fn StatusMessage<'a, G: Html>(cx: Scope<'a>, status_str: &'a ReadSignal<String>) -> View<G> {
-    view! { cx,
-        (if !status_str.get().is_empty() {
-            view! { cx,
-                p(class="status") {
-                    (status_str.get())
-                }
-            }
-        } else {
-            view! { cx, }
-        })
+        StatusDialog(status=status_dialog_state)
     }
 }

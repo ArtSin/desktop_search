@@ -2,11 +2,16 @@ use common_lib::{status::IndexStats, IndexingStatus};
 use serde_wasm_bindgen::from_value;
 use sycamore::{futures::spawn_local_scoped, prelude::*};
 
-use crate::app::{invoke, StatusMessage};
+use crate::app::{
+    invoke,
+    widgets::{StatusDialogState, StatusMessage},
+};
 
-#[component]
-pub fn Status<G: Html>(cx: Scope) -> View<G> {
-    let status_str = create_signal(cx, String::new());
+#[component(inline_props)]
+pub fn Status<'a, G: Html>(
+    cx: Scope<'a>,
+    status_dialog_state: &'a Signal<StatusDialogState>,
+) -> View<G> {
     let indexing_status = create_signal(cx, IndexingStatus::Finished);
     let index_stats = create_signal(cx, IndexStats::default());
 
@@ -15,7 +20,7 @@ pub fn Status<G: Html>(cx: Scope) -> View<G> {
 
     let update = move || {
         spawn_local_scoped(cx, async move {
-            status_str.set("⏳ Загрузка...".to_owned());
+            status_dialog_state.set(StatusDialogState::Loading);
 
             match invoke("get_indexing_status", wasm_bindgen::JsValue::UNDEFINED)
                 .await
@@ -24,10 +29,12 @@ pub fn Status<G: Html>(cx: Scope) -> View<G> {
             {
                 Ok(x) => {
                     indexing_status.set(x);
-                    status_str.set("".to_owned());
+                    status_dialog_state.set(StatusDialogState::None);
                 }
                 Err(e) => {
-                    status_str.set("❌ Ошибка загрузки статуса индексирования: ".to_owned() + &e);
+                    status_dialog_state.set(StatusDialogState::Error(
+                        "❌ Ошибка загрузки статуса индексирования: ".to_owned() + &e,
+                    ));
                     return;
                 }
             }
@@ -39,10 +46,12 @@ pub fn Status<G: Html>(cx: Scope) -> View<G> {
             {
                 Ok(x) => {
                     index_stats.set(x);
-                    status_str.set("".to_owned());
+                    status_dialog_state.set(StatusDialogState::None);
                 }
                 Err(e) => {
-                    status_str.set("❌ Ошибка загрузки статистики: ".to_owned() + &e);
+                    status_dialog_state.set(StatusDialogState::Error(
+                        "❌ Ошибка загрузки статистики: ".to_owned() + &e,
+                    ));
                 }
             }
         })
@@ -52,13 +61,15 @@ pub fn Status<G: Html>(cx: Scope) -> View<G> {
 
     let index = move |_| {
         spawn_local_scoped(cx, async move {
-            status_str.set("⏳ Загрузка...".to_owned());
+            status_dialog_state.set(StatusDialogState::Loading);
 
             if let Err(e) = invoke("index", wasm_bindgen::JsValue::UNDEFINED)
                 .await
                 .map_err(|e| e.as_string().unwrap())
             {
-                status_str.set("❌ Ошибка индексирования: ".to_owned() + &e);
+                status_dialog_state.set(StatusDialogState::Error(
+                    "❌ Ошибка индексирования: ".to_owned() + &e,
+                ));
                 return;
             }
 
@@ -69,7 +80,6 @@ pub fn Status<G: Html>(cx: Scope) -> View<G> {
     view! { cx,
         div(class="main_container") {
             main {
-                StatusMessage(status_str=status_str)
                 StatusMessage(status_str=indexing_status_str)
 
                 form(id="status", on:submit=index, action="javascript:void(0);") {

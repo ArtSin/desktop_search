@@ -7,7 +7,7 @@ use sycamore::{futures::spawn_local_scoped, prelude::*};
 use url::Url;
 use uuid::Uuid;
 
-use crate::app::{invoke, StatusMessage};
+use crate::app::{invoke, widgets::StatusDialogState};
 
 pub const MAX_FILE_SIZE_MIN: f64 = 0.01;
 pub const MAX_FILE_SIZE_MAX: f64 = 1000.0;
@@ -140,14 +140,16 @@ struct SetServerSettingsArgs<'a> {
     server_settings: &'a ServerSettings,
 }
 
-#[component]
-pub fn Settings<G: Html>(cx: Scope) -> View<G> {
+#[component(inline_props)]
+pub fn Settings<'a, G: Html>(
+    cx: Scope<'a>,
+    status_dialog_state: &'a Signal<StatusDialogState>,
+) -> View<G> {
     // Use default settings until loaded from server
     let client_settings = create_signal(cx, ClientSettings::default());
     let server_settings = create_signal(cx, ServerSettings::default());
 
     let server_loaded = create_signal(cx, false);
-    let status_str = create_signal(cx, String::new());
 
     // Input values for settings
     let indexer_url_str = create_signal(cx, client_settings.get().get_indexer_url_str());
@@ -212,7 +214,9 @@ pub fn Settings<G: Html>(cx: Scope) -> View<G> {
                 true
             }
             Err(e) => {
-                status_str.set("❌ Ошибка загрузки клиентских настроек: ".to_owned() + &e);
+                status_dialog_state.set(StatusDialogState::Error(
+                    "❌ Ошибка загрузки клиентских настроек: ".to_owned() + &e,
+                ));
                 false
             }
         }
@@ -229,7 +233,9 @@ pub fn Settings<G: Html>(cx: Scope) -> View<G> {
                 true
             }
             Err(e) => {
-                status_str.set("❌ Ошибка загрузки серверных настроек: ".to_owned() + &e);
+                status_dialog_state.set(StatusDialogState::Error(
+                    "❌ Ошибка загрузки серверных настроек: ".to_owned() + &e,
+                ));
                 false
             }
         }
@@ -237,17 +243,17 @@ pub fn Settings<G: Html>(cx: Scope) -> View<G> {
 
     // Load settings
     spawn_local_scoped(cx, async move {
-        status_str.set("⏳ Загрузка...".to_owned());
+        status_dialog_state.set(StatusDialogState::Loading);
 
         if load_client_settings().await && load_server_settings().await {
-            status_str.set("".to_owned());
+            status_dialog_state.set(StatusDialogState::None);
         }
     });
 
     // Save settings
     let set_settings = move |_| {
         spawn_local_scoped(cx, async move {
-            status_str.set("⏳ Сохранение...".to_owned());
+            status_dialog_state.set(StatusDialogState::Loading);
 
             let new_client_settings = ClientSettings::parse(&indexer_url_str.get());
 
@@ -260,10 +266,10 @@ pub fn Settings<G: Html>(cx: Scope) -> View<G> {
             )
             .await
             {
-                status_str.set(
+                status_dialog_state.set(StatusDialogState::Error(
                     "❌ Ошибка сохранения клиентских настроек: ".to_owned()
                         + &e.as_string().unwrap(),
-                );
+                ));
                 return;
             }
 
@@ -287,10 +293,10 @@ pub fn Settings<G: Html>(cx: Scope) -> View<G> {
                 )
                 .await
                 {
-                    status_str.set(
+                    status_dialog_state.set(StatusDialogState::Error(
                         "❌ Ошибка сохранения серверных настроек: ".to_owned()
                             + &e.as_string().unwrap(),
-                    );
+                    ));
                     return;
                 }
 
@@ -299,7 +305,7 @@ pub fn Settings<G: Html>(cx: Scope) -> View<G> {
                 return;
             };
 
-            status_str.set("✅ Настройки сохранены".to_owned());
+            status_dialog_state.set(StatusDialogState::Info("✅ Настройки сохранены".to_owned()));
         })
     };
 
@@ -345,8 +351,6 @@ pub fn Settings<G: Html>(cx: Scope) -> View<G> {
                         button(type="submit", disabled=*any_invalid.get()) { "Сохранить" }
                     }
                 }
-
-                StatusMessage(status_str=status_str)
             }
         }
     }

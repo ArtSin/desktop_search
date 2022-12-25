@@ -162,6 +162,11 @@ p.status {
     animation: fade_in 0.5s ease-in;
 }
 
+#dialog>form>menu {
+    display: flex;
+    justify-content: end;
+}
+
 article.search_result {
     margin: 1em 0;
     padding: 0 10px;

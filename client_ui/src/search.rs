@@ -15,7 +15,7 @@ use sycamore::{futures::spawn_local_scoped, prelude::*};
 use url::Url;
 
 use crate::{
-    app::{invoke, StatusMessage},
+    app::{invoke, widgets::StatusDialogState},
     settings::{MAX_FILE_SIZE_MAX, MAX_FILE_SIZE_MIN},
 };
 
@@ -51,12 +51,13 @@ fn get_local_file_url<P: AsRef<Path>>(path: P, content_type: Option<&str>) -> Ur
     img_url
 }
 
-#[component]
-pub fn Search<G: Html>(cx: Scope) -> View<G> {
+#[component(inline_props)]
+pub fn Search<'a, G: Html>(
+    cx: Scope<'a>,
+    status_dialog_state: &'a Signal<StatusDialogState>,
+) -> View<G> {
     const IMAGE_SIZE_MIN: u32 = 1;
     const IMAGE_SIZE_MAX: u32 = 99999;
-
-    let status_str = create_signal(cx, String::new());
 
     let query = create_signal(cx, String::new());
     let query_image_path = create_signal(cx, PathBuf::new());
@@ -111,7 +112,7 @@ pub fn Search<G: Html>(cx: Scope) -> View<G> {
 
     let search = move |_| {
         spawn_local_scoped(cx, async move {
-            status_str.set("⏳ Загрузка...".to_owned());
+            status_dialog_state.set(StatusDialogState::Loading);
 
             let search_query = match *query_type.get() {
                 QueryType::Text => common_lib::search::QueryType::Text(TextQuery {
@@ -149,11 +150,13 @@ pub fn Search<G: Html>(cx: Scope) -> View<G> {
             {
                 Ok(x) => {
                     search_results.set(x.results);
-                    status_str.set("".to_owned());
+                    status_dialog_state.set(StatusDialogState::None);
                 }
                 Err(e) => {
                     search_results.set(Vec::new());
-                    status_str.set("❌ Ошибка поиска: ".to_owned() + &e);
+                    status_dialog_state.set(StatusDialogState::Error(
+                        "❌ Ошибка поиска: ".to_owned() + &e,
+                    ));
                 }
             }
         })
@@ -244,9 +247,8 @@ pub fn Search<G: Html>(cx: Scope) -> View<G> {
             }
 
             main {
-                StatusMessage(status_str=status_str)
                 SearchResults(search_results=search_results, display_preview=display_preview,
-                    preview_data=preview_data)
+                    preview_data=preview_data, status_dialog_state=status_dialog_state)
             }
 
             (if *display_preview.get() {
@@ -470,6 +472,7 @@ fn SearchResults<'a, G: Html>(
     search_results: &'a ReadSignal<Vec<FileES>>,
     display_preview: &'a Signal<bool>,
     preview_data: &'a Signal<PreviewData>,
+    status_dialog_state: &'a Signal<StatusDialogState>,
 ) -> View<G> {
     view! { cx,
         Keyed(
@@ -491,14 +494,17 @@ fn SearchResults<'a, G: Html>(
                 };
                 let open_path = move |path| {
                     spawn_local_scoped(cx, async move {
-                        invoke(
+                        if let Err(e) = invoke(
                             "open_path",
                             to_value(&OpenPathArgs {
                                 path,
                             })
                             .unwrap(),
                         )
-                        .await;
+                        .await
+                        .map_err(|e| e.as_string().unwrap()) {
+                            status_dialog_state.set(StatusDialogState::Error("❌ Ошибка открытия: ".to_owned() + &e));
+                        }
                     })
                 };
                 let open_file = move |_| {
