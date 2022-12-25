@@ -1,9 +1,13 @@
-use std::path::PathBuf;
+use std::{
+    fmt::Display,
+    path::{Path, PathBuf},
+    str::FromStr,
+};
 
 use chrono::{DateTime, Local, TimeZone, Utc};
 use common_lib::{
-    elasticsearch::FileES,
-    search::{ImageSearchRequest, SearchRequest, SearchResponse, TextSearchRequest},
+    elasticsearch::{FileES, FileMetadata},
+    search::{ImageQuery, ImageSearchRequest, SearchRequest, SearchResponse, TextQuery},
 };
 use serde::Serialize;
 use serde_wasm_bindgen::{from_value, to_value};
@@ -38,8 +42,20 @@ struct SearchRequestArgs<'a> {
     search_request: &'a SearchRequest,
 }
 
+fn get_local_file_url<P: AsRef<Path>>(path: P, content_type: Option<&str>) -> Url {
+    let path = path.as_ref().to_string_lossy().into_owned();
+    let mut img_url = Url::parse(&("localfile://localhost".to_owned() + &path)).unwrap();
+    if let Some(x) = content_type {
+        img_url.query_pairs_mut().append_pair("content_type", x);
+    }
+    img_url
+}
+
 #[component]
 pub fn Search<G: Html>(cx: Scope) -> View<G> {
+    const IMAGE_SIZE_MIN: u32 = 1;
+    const IMAGE_SIZE_MAX: u32 = 99999;
+
     let status_str = create_signal(cx, String::new());
 
     let query = create_signal(cx, String::new());
@@ -55,8 +71,16 @@ pub fn Search<G: Html>(cx: Scope) -> View<G> {
     let size_from = create_signal(cx, None);
     let size_to = create_signal(cx, None);
     let size_valid = create_signal(cx, true);
+    let width_from = create_signal(cx, None);
+    let width_to = create_signal(cx, None);
+    let width_valid = create_signal(cx, true);
+    let height_from = create_signal(cx, None);
+    let height_to = create_signal(cx, None);
+    let height_valid = create_signal(cx, true);
 
-    let any_invalid = create_memo(cx, || !*modified_valid.get() || !*size_valid.get());
+    let any_invalid = create_memo(cx, || {
+        !*modified_valid.get() || !*size_valid.get() || !*width_valid.get() || !*height_valid.get()
+    });
 
     let display_preview = create_signal(cx, false);
     let preview_data = create_signal(cx, PreviewData::default());
@@ -90,11 +114,11 @@ pub fn Search<G: Html>(cx: Scope) -> View<G> {
             status_str.set("⏳ Загрузка...".to_owned());
 
             let search_query = match *query_type.get() {
-                QueryType::Text => common_lib::search::QueryType::Text(TextSearchRequest {
+                QueryType::Text => common_lib::search::QueryType::Text(TextQuery {
                     query: (*query.get()).clone(),
                     image_search_enabled: *image_search_enabled.get(),
                 }),
-                QueryType::Image => common_lib::search::QueryType::Image(ImageSearchRequest {
+                QueryType::Image => common_lib::search::QueryType::Image(ImageQuery {
                     image_path: (*query_image_path.get()).clone(),
                 }),
             };
@@ -104,6 +128,12 @@ pub fn Search<G: Html>(cx: Scope) -> View<G> {
                 modified_to: *modified_to.get(),
                 size_from: size_from.get().map(|x| (x * 1024.0 * 1024.0) as u64),
                 size_to: size_to.get().map(|x| (x * 1024.0 * 1024.0) as u64),
+                image_data: ImageSearchRequest {
+                    width_from: *width_from.get(),
+                    width_to: *width_to.get(),
+                    height_from: *height_from.get(),
+                    height_to: *height_to.get(),
+                },
             };
 
             match invoke(
@@ -150,8 +180,7 @@ pub fn Search<G: Html>(cx: Scope) -> View<G> {
                             button(form="search", type="submit", disabled=*any_invalid.get()) { "Искать" }
                         }
                         (if !query_image_path.get().as_os_str().is_empty() {
-                            let path = query_image_path.get().to_string_lossy().into_owned();
-                            let img_url = Url::parse(&("localfile://localhost".to_owned() + &path)).unwrap();
+                            let img_url = get_local_file_url(&*query_image_path.get(), None);
                             view! { cx,
                                 div {
                                     img(src=img_url, id="query_image") {}
@@ -199,6 +228,18 @@ pub fn Search<G: Html>(cx: Scope) -> View<G> {
                             min=MAX_FILE_SIZE_MIN, max=MAX_FILE_SIZE_MAX,
                             value_from=size_from, value_to=size_to, valid=size_valid)
                     }
+
+                    details {
+                        summary { "Свойства изображения" }
+
+                        NumberFilter(legend="Ширина (пиксели)", id="width",
+                            min=IMAGE_SIZE_MIN, max=IMAGE_SIZE_MAX,
+                            value_from=width_from, value_to=width_to, valid=width_valid)
+
+                        NumberFilter(legend="Высота (пиксели)", id="height",
+                            min=IMAGE_SIZE_MIN, max=IMAGE_SIZE_MAX,
+                            value_from=height_from, value_to=height_to, valid=height_valid)
+                    }
                 }
             }
 
@@ -209,14 +250,11 @@ pub fn Search<G: Html>(cx: Scope) -> View<G> {
             }
 
             (if *display_preview.get() {
-                let path = preview_data.get().path.to_string_lossy().into_owned();
-                let mut img_url = Url::parse(&("localfile://localhost".to_owned() + &path)).unwrap();
-                let content_type = preview_data.get().content_type.clone();
-                img_url.query_pairs_mut().append_pair("content_type", &content_type);
+                let object_url = get_local_file_url(&preview_data.get().path, Some(&preview_data.get().content_type));
                 view! { cx,
                     aside(id="preview") {
                         button(form="search", type="button", on:click=hide_preview) { "✖" }
-                        object(data=img_url, type=content_type) {
+                        object(data=object_url, type=preview_data.get().content_type) {
                             p(style="text-align: center;") {
                                 "Предпросмотр файла не поддерживается"
                             }
@@ -346,18 +384,23 @@ fn DateTimeFilter<'a, G: Html>(cx: Scope<'a>, props: DateTimeFilterProps<'a>) ->
 }
 
 #[derive(Prop)]
-struct NumberFilterProps<'a> {
+struct NumberFilterProps<'a, T> {
     legend: &'static str,
     id: &'static str,
-    min: f64,
-    max: f64,
-    value_from: &'a Signal<Option<f64>>,
-    value_to: &'a Signal<Option<f64>>,
+    min: T,
+    max: T,
+    value_from: &'a Signal<Option<T>>,
+    value_to: &'a Signal<Option<T>>,
     valid: &'a Signal<bool>,
 }
 
 #[component]
-fn NumberFilter<'a, G: Html>(cx: Scope<'a>, props: NumberFilterProps<'a>) -> View<G> {
+fn NumberFilter<'a, T, G>(cx: Scope<'a>, props: NumberFilterProps<'a, T>) -> View<G>
+where
+    T: Copy + FromStr + Display + PartialOrd,
+    <T as FromStr>::Err: Display,
+    G: Html,
+{
     let value_from = create_signal(cx, props.min.to_string());
     let value_to = create_signal(cx, props.max.to_string());
 
@@ -371,22 +414,19 @@ fn NumberFilter<'a, G: Html>(cx: Scope<'a>, props: NumberFilterProps<'a>) -> Vie
         if !enabled {
             Ok(None)
         } else {
-            value
-                .parse::<f64>()
-                .map_err(|e| e.to_string())
-                .and_then(|x| {
-                    if (props.min..=props.max).contains(&x) {
-                        Ok(Some(x))
-                    } else {
-                        Err("Out of bounds".to_owned())
-                    }
-                })
+            value.parse::<T>().map_err(|e| e.to_string()).and_then(|x| {
+                if (props.min..=props.max).contains(&x) {
+                    Ok(Some(x))
+                } else {
+                    Err("Out of bounds".to_owned())
+                }
+            })
         }
     };
     let update = move |enabled: &Signal<bool>,
                        value_str: &Signal<String>,
                        valid: &Signal<bool>,
-                       value_num: &Signal<Option<f64>>| {
+                       value_num: &Signal<Option<T>>| {
         match parse(*enabled.get(), &value_str.get()) {
             Ok(x) => {
                 valid.set(true);
@@ -437,7 +477,7 @@ fn SearchResults<'a, G: Html>(
             view=move |cx, item| {
                 let file_name = item.path.file_name().unwrap().to_string_lossy().into_owned();
                 let path = item.path.to_string_lossy().into_owned();
-                let path_ = path.clone();
+                let path_ = item.path.clone();
                 let path__ = item.path.clone();
                 let path___ = item.path.clone();
                 let content_type = item.content_type.clone();
@@ -473,7 +513,7 @@ fn SearchResults<'a, G: Html>(
                 view! { cx,
                     article(class="search_result") {
                         (if item.content_type.starts_with("image") {
-                            let img_url = Url::parse(&("localfile://localhost".to_owned() + &path_)).unwrap();
+                            let img_url = get_local_file_url(&path_, Some(&item.content_type));
                             view! { cx,
                                 img(src=(img_url)) {}
                             }
@@ -506,6 +546,34 @@ fn SearchResults<'a, G: Html>(
                                 "Хеш SHA-256: " (item.hash)
                             }
                         }
+                        (if item.image_data.any_metadata() {
+                            view! { cx,
+                                details {
+                                    summary { "Свойства изображения" }
+
+                                    (if let Some(width) = item.image_data.width {
+                                        view! { cx,
+                                            p {
+                                                "Ширина (пиксели): " (width)
+                                            }
+                                        }
+                                    } else {
+                                        view! { cx, }
+                                    })
+                                    (if let Some(height) = item.image_data.height {
+                                        view! { cx,
+                                            p {
+                                                "Высота (пиксели): " (height)
+                                            }
+                                        }
+                                    } else {
+                                        view! { cx, }
+                                    })
+                                }
+                            }
+                        } else {
+                            view! { cx, }
+                        })
                     }
                 }
             },

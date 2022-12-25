@@ -21,5 +21,5 @@ pub fn get_local_file(_handle: &AppHandle, request: &Request) -> Result<Response
         }
     }
     let data = std::fs::read(path)?;
-    Ok(builder.body(data)?)
+    builder.body(data)
 }

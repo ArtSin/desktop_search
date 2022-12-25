@@ -7,6 +7,8 @@ use tokio::{fs::File, sync::RwLock};
 
 use crate::ServerState;
 
+use self::image::ImageMetadata;
+
 mod image;
 
 const PARSERS: [&(dyn Parser + Send + Sync); 1] = [&image::ImageParser];
@@ -26,6 +28,9 @@ pub trait Parser {
 pub struct Metadata {
     #[serde(rename = "Content-Type")]
     content_type: String,
+    /// Fields for image files
+    #[serde(flatten)]
+    pub image_data: ImageMetadata,
 }
 
 async fn get_metadata(

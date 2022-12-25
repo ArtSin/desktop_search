@@ -5,6 +5,8 @@ use common_lib::{
     elasticsearch::{FileES, ImageData},
     embeddings::get_image_search_image_embedding,
 };
+use serde::Deserialize;
+use serde_with::{serde_as, DisplayFromStr};
 use tokio::sync::RwLock;
 
 use crate::ServerState;
@@ -12,6 +14,19 @@ use crate::ServerState;
 use super::{Metadata, Parser};
 
 pub struct ImageParser;
+
+#[serde_as]
+#[derive(Default, Deserialize)]
+pub struct ImageMetadata {
+    /// Width in pixels
+    #[serde_as(as = "Option<DisplayFromStr>")]
+    #[serde(rename = "tiff:ImageWidth")]
+    width: Option<u32>,
+    /// Height in pixels
+    #[serde_as(as = "Option<DisplayFromStr>")]
+    #[serde(rename = "tiff:ImageLength")]
+    height: Option<u32>,
+}
 
 #[async_trait]
 impl Parser for ImageParser {
@@ -35,9 +50,11 @@ impl Parser for ImageParser {
         let embedding =
             get_image_search_image_embedding(reqwest_client, nnserver_url, &file.path).await?;
 
-        file.image_data = Some(ImageData {
+        file.image_data = ImageData {
             image_embedding: embedding.embedding,
-        });
+            width: metadata.image_data.width,
+            height: metadata.image_data.height,
+        };
         Ok(())
     }
 }

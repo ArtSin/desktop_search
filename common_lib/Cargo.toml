@@ -8,6 +8,7 @@ edition = "2021"
 [dependencies]
 anyhow.workspace = true
 serde.workspace = true
+serde_with.workspace = true
 url.workspace = true
 chrono.workspace = true
 

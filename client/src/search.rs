@@ -3,7 +3,7 @@ use std::{cmp::min, path::PathBuf};
 use common_lib::{
     elasticsearch::{FileES, ELASTICSEARCH_INDEX, ELASTICSEARCH_MAX_SIZE},
     embeddings::{get_image_search_image_embedding, get_image_search_text_embedding},
-    search::{ImageSearchRequest, QueryType, SearchRequest, SearchResponse, TextSearchRequest},
+    search::{ImageQuery, QueryType, SearchRequest, SearchResponse, TextQuery},
 };
 use elasticsearch::{Elasticsearch, SearchParts};
 use serde_json::{json, Value};
@@ -41,7 +41,7 @@ async fn get_request_body(
     );
 
     match search_request.query {
-        QueryType::Text(TextSearchRequest {
+        QueryType::Text(TextQuery {
             ref query,
             image_search_enabled,
         }) => {
@@ -62,7 +62,7 @@ async fn get_request_body(
                 );
             }
         }
-        QueryType::Image(ImageSearchRequest { ref image_path }) => {
+        QueryType::Image(ImageQuery { ref image_path }) => {
             let image_search_image_embedding =
                 get_image_search_image_embedding(reqwest_client, nnserver_url, image_path).await?;
             let embedding = image_search_image_embedding
@@ -83,7 +83,7 @@ async fn get_request_body(
     }
 
     let query_string = match search_request.query {
-        QueryType::Text(TextSearchRequest { ref query, .. }) => {
+        QueryType::Text(TextQuery { ref query, .. }) => {
             Some(simple_query_string(query.clone(), &["path", "hash"]))
         }
         _ => None,
@@ -101,13 +101,31 @@ async fn get_request_body(
         ),
         (search_request.size_from.is_some() || search_request.size_to.is_some())
             .then(|| range("size", search_request.size_from, search_request.size_to)),
+        (search_request.image_data.width_from.is_some()
+            || search_request.image_data.width_to.is_some())
+        .then(|| {
+            range(
+                "width",
+                search_request.image_data.width_from,
+                search_request.image_data.width_to,
+            )
+        }),
+        (search_request.image_data.height_from.is_some()
+            || search_request.image_data.height_to.is_some())
+        .then(|| {
+            range(
+                "height",
+                search_request.image_data.height_from,
+                search_request.image_data.height_to,
+            )
+        }),
     ]
     .into_iter()
     .flatten()
     .collect::<Vec<_>>();
 
     let query_boost = match search_request.query {
-        QueryType::Text(TextSearchRequest {
+        QueryType::Text(TextQuery {
             image_search_enabled,
             ..
         }) => {

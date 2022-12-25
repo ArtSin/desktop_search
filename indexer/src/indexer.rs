@@ -63,6 +63,12 @@ pub async fn create_index(es_client: &Elasticsearch) -> Result<(), elasticsearch
                         "dims": 512,
                         "index": true,
                         "similarity": "dot_product"
+                    },
+                    "width": {
+                        "type": "integer"
+                    },
+                    "height": {
+                        "type": "integer"
                     }
                 }
             }
