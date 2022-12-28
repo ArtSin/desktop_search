@@ -1,6 +1,9 @@
 use std::path::PathBuf;
 
-use chrono::{serde::ts_seconds, DateTime, Utc};
+use chrono::{
+    serde::{ts_seconds, ts_seconds_option},
+    DateTime, Utc,
+};
 use serde::{Deserialize, Serialize};
 use serde_with::skip_serializing_none;
 
@@ -33,6 +36,9 @@ pub struct FileES {
     /// Fields for image files
     #[serde(flatten)]
     pub image_data: ImageData,
+    /// Fields for document files
+    #[serde(flatten)]
+    pub document_data: DocumentData,
 }
 
 impl PartialEq for FileES {
@@ -57,5 +63,32 @@ pub struct ImageData {
 impl FileMetadata for ImageData {
     fn any_metadata(&self) -> bool {
         self.width.is_some() || self.height.is_some()
+    }
+}
+
+/// Fields for document files
+#[skip_serializing_none]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct DocumentData {
+    pub title: Option<String>,
+    pub creator: Option<String>,
+    #[serde(default, with = "ts_seconds_option")]
+    pub doc_created: Option<DateTime<Utc>>,
+    #[serde(default, with = "ts_seconds_option")]
+    pub doc_modified: Option<DateTime<Utc>>,
+    pub num_pages: Option<u32>,
+    pub num_words: Option<u32>,
+    pub num_characters: Option<u32>,
+}
+
+impl FileMetadata for DocumentData {
+    fn any_metadata(&self) -> bool {
+        self.title.is_some()
+            || self.creator.is_some()
+            || self.doc_created.is_some()
+            || self.doc_modified.is_some()
+            || self.num_pages.is_some()
+            || self.num_words.is_some()
+            || self.num_characters.is_some()
     }
 }

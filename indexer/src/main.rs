@@ -17,6 +17,7 @@ use crate::{
     settings::{read_settings_file, InternalServerSettings},
 };
 
+mod file_server;
 mod indexer;
 mod parser;
 mod scanner;
@@ -71,6 +72,7 @@ async fn main() {
             "/index",
             get(indexer::indexing_status).patch(indexer::index),
         )
+        .route("/file", get(file_server::get_file))
         .with_state(Arc::new(RwLock::new(ServerState {
             settings,
             es_client,

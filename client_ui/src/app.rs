@@ -1,5 +1,6 @@
 use std::str::FromStr;
 
+use common_lib::settings::{ClientSettings, ServerSettings};
 use derive_more::Display;
 use sycamore::prelude::*;
 use sycamore::rt::Event;
@@ -43,6 +44,10 @@ impl FromStr for AppTabs {
 
 #[component]
 pub fn App<G: Html>(cx: Scope) -> View<G> {
+    // Use default settings until loaded from server
+    let client_settings = create_signal(cx, ClientSettings::default());
+    let server_settings = create_signal(cx, ServerSettings::default());
+
     let status_dialog_state = create_signal(cx, StatusDialogState::None);
     let tabs = create_signal(
         cx,
@@ -75,13 +80,14 @@ pub fn App<G: Html>(cx: Scope) -> View<G> {
         }
 
         div(style={if *curr_tab.get().as_ref() == AppTabs::Search { "display: block;" } else { "display: none;" }}) {
-            Search(status_dialog_state=status_dialog_state)
+            Search(client_settings=client_settings, status_dialog_state=status_dialog_state)
         }
         div(style={if *curr_tab.get().as_ref() == AppTabs::Status { "display: block;" } else { "display: none;" }}) {
             Status(status_dialog_state=status_dialog_state)
         }
         div(style={if *curr_tab.get().as_ref() == AppTabs::Settings { "display: block;" } else { "display: none;" }}) {
-            Settings(status_dialog_state=status_dialog_state)
+            Settings(client_settings=client_settings, server_settings=server_settings,
+                status_dialog_state=status_dialog_state)
         }
 
         StatusDialog(status=status_dialog_state)

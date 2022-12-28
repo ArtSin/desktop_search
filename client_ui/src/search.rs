@@ -7,7 +7,11 @@ use std::{
 use chrono::{DateTime, Local, TimeZone, Utc};
 use common_lib::{
     elasticsearch::{FileES, FileMetadata},
-    search::{ImageQuery, ImageSearchRequest, SearchRequest, SearchResponse, TextQuery},
+    search::{
+        DocumentSearchRequest, ImageQuery, ImageSearchRequest, SearchRequest, SearchResponse,
+        TextQuery,
+    },
+    settings::ClientSettings,
 };
 use serde::Serialize;
 use serde_wasm_bindgen::{from_value, to_value};
@@ -42,18 +46,24 @@ struct SearchRequestArgs<'a> {
     search_request: &'a SearchRequest,
 }
 
-fn get_local_file_url<P: AsRef<Path>>(path: P, content_type: Option<&str>) -> Url {
-    let path = path.as_ref().to_string_lossy().into_owned();
-    let mut img_url = Url::parse(&("localfile://localhost".to_owned() + &path)).unwrap();
-    if let Some(x) = content_type {
-        img_url.query_pairs_mut().append_pair("content_type", x);
-    }
-    img_url
+fn get_local_file_url<P: AsRef<Path>>(
+    client_settings: &ReadSignal<ClientSettings>,
+    path: P,
+    thumbnail: bool,
+) -> Url {
+    let mut file_url = client_settings.get().indexer_url.clone();
+    file_url.set_path("file");
+    file_url
+        .query_pairs_mut()
+        .append_pair("path", &path.as_ref().to_string_lossy())
+        .append_pair("thumbnail", &thumbnail.to_string());
+    file_url
 }
 
 #[component(inline_props)]
 pub fn Search<'a, G: Html>(
     cx: Scope<'a>,
+    client_settings: &'a ReadSignal<ClientSettings>,
     status_dialog_state: &'a Signal<StatusDialogState>,
 ) -> View<G> {
     const IMAGE_SIZE_MIN: u32 = 1;
@@ -72,6 +82,7 @@ pub fn Search<'a, G: Html>(
     let size_from = create_signal(cx, None);
     let size_to = create_signal(cx, None);
     let size_valid = create_signal(cx, true);
+
     let width_from = create_signal(cx, None);
     let width_to = create_signal(cx, None);
     let width_valid = create_signal(cx, true);
@@ -79,8 +90,20 @@ pub fn Search<'a, G: Html>(
     let height_to = create_signal(cx, None);
     let height_valid = create_signal(cx, true);
 
+    let doc_created_from = create_signal(cx, None);
+    let doc_created_to = create_signal(cx, None);
+    let doc_created_valid = create_signal(cx, true);
+    let doc_modified_from = create_signal(cx, None);
+    let doc_modified_to = create_signal(cx, None);
+    let doc_modified_valid = create_signal(cx, true);
+
     let any_invalid = create_memo(cx, || {
-        !*modified_valid.get() || !*size_valid.get() || !*width_valid.get() || !*height_valid.get()
+        !*modified_valid.get()
+            || !*size_valid.get()
+            || !*width_valid.get()
+            || !*height_valid.get()
+            || !*doc_created_valid.get()
+            || !*doc_modified_valid.get()
     });
 
     let display_preview = create_signal(cx, false);
@@ -135,6 +158,12 @@ pub fn Search<'a, G: Html>(
                     height_from: *height_from.get(),
                     height_to: *height_to.get(),
                 },
+                document_data: DocumentSearchRequest {
+                    doc_created_from: *doc_created_from.get(),
+                    doc_created_to: *doc_created_to.get(),
+                    doc_modified_from: *doc_modified_from.get(),
+                    doc_modified_to: *doc_modified_to.get(),
+                },
             };
 
             match invoke(
@@ -183,7 +212,7 @@ pub fn Search<'a, G: Html>(
                             button(form="search", type="submit", disabled=*any_invalid.get()) { "Искать" }
                         }
                         (if !query_image_path.get().as_os_str().is_empty() {
-                            let img_url = get_local_file_url(&*query_image_path.get(), None);
+                            let img_url = get_local_file_url(client_settings, &*query_image_path.get(), true);
                             view! { cx,
                                 div {
                                     img(src=img_url, id="query_image") {}
@@ -243,24 +272,70 @@ pub fn Search<'a, G: Html>(
                             min=IMAGE_SIZE_MIN, max=IMAGE_SIZE_MAX,
                             value_from=height_from, value_to=height_to, valid=height_valid)
                     }
+
+                    details {
+                        summary { "Свойства документа" }
+
+                        DateTimeFilter(legend="Дата и время создания", id="doc_created",
+                            value_from=doc_created_from, value_to=doc_created_to, valid=doc_created_valid)
+
+                        DateTimeFilter(legend="Дата и время изменения", id="doc_modified",
+                            value_from=doc_modified_from, value_to=doc_modified_to, valid=doc_modified_valid)
+                    }
                 }
             }
 
             main {
                 SearchResults(search_results=search_results, display_preview=display_preview,
-                    preview_data=preview_data, status_dialog_state=status_dialog_state)
+                    preview_data=preview_data, client_settings=client_settings,
+                    status_dialog_state=status_dialog_state)
             }
 
             (if *display_preview.get() {
-                let object_url = get_local_file_url(&preview_data.get().path, Some(&preview_data.get().content_type));
+                let content_type = preview_data.get().content_type.clone();
+                let object_url = get_local_file_url(client_settings, &preview_data.get().path, false);
                 view! { cx,
                     aside(id="preview") {
                         button(form="search", type="button", on:click=hide_preview) { "✖" }
-                        object(data=object_url, type=preview_data.get().content_type) {
-                            p(style="text-align: center;") {
-                                "Предпросмотр файла не поддерживается"
+
+                        (if content_type.starts_with("video") {
+                            let content_type = content_type.clone();
+                            let object_url = object_url.clone();
+
+                            view! { cx,
+                                video(id="preview_object", controls=true, autoplay=true) {
+                                    source(src=object_url, type=content_type)
+
+                                    p(style="text-align: center;") {
+                                        "Предпросмотр файла не поддерживается"
+                                    }
+                                }
                             }
-                        }
+                        } else if content_type.starts_with("audio") {
+                            let content_type = content_type.clone();
+                            let object_url = object_url.clone();
+
+                            view! { cx,
+                                audio(id="preview_object", controls=true, autoplay=true) {
+                                    source(src=object_url, type=content_type)
+
+                                    p(style="text-align: center;") {
+                                        "Предпросмотр файла не поддерживается"
+                                    }
+                                }
+                            }
+                        } else {
+                            let content_type = content_type.clone();
+                            let object_url = object_url.clone();
+
+                            view! { cx,
+                                object(id="preview_object", data=object_url, type=content_type) {
+                                    p(style="text-align: center;") {
+                                        "Предпросмотр файла не поддерживается"
+                                    }
+                                }
+                            }
+                        })
                     }
                 }
             } else {
@@ -472,6 +547,7 @@ fn SearchResults<'a, G: Html>(
     search_results: &'a ReadSignal<Vec<FileES>>,
     display_preview: &'a Signal<bool>,
     preview_data: &'a Signal<PreviewData>,
+    client_settings: &'a ReadSignal<ClientSettings>,
     status_dialog_state: &'a Signal<StatusDialogState>,
 ) -> View<G> {
     view! { cx,
@@ -518,10 +594,12 @@ fn SearchResults<'a, G: Html>(
 
                 view! { cx,
                     article(class="search_result") {
-                        (if item.content_type.starts_with("image") {
-                            let img_url = get_local_file_url(&path_, Some(&item.content_type));
+                        (if item.content_type.starts_with("image")
+                                || item.content_type.starts_with("video")
+                                || item.content_type.starts_with("audio") {
+                            let img_url = get_local_file_url(client_settings, &path_, true);
                             view! { cx,
-                                img(src=(img_url)) {}
+                                img(src=(img_url), onerror="this.style.display='none'") {}
                             }
                         } else {
                             view! { cx, }
@@ -538,6 +616,7 @@ fn SearchResults<'a, G: Html>(
                             button(form="search", type="button", on:click=open_file) { "Открыть" }
                             button(form="search", type="button", on:click=open_folder) { "Открыть папку" }
                         }
+
                         details {
                             summary { "Основные свойства файла" }
 
@@ -552,6 +631,7 @@ fn SearchResults<'a, G: Html>(
                                 "Хеш SHA-256: " (item.hash)
                             }
                         }
+
                         (if item.image_data.any_metadata() {
                             view! { cx,
                                 details {
@@ -570,6 +650,81 @@ fn SearchResults<'a, G: Html>(
                                         view! { cx,
                                             p {
                                                 "Высота (пиксели): " (height)
+                                            }
+                                        }
+                                    } else {
+                                        view! { cx, }
+                                    })
+                                }
+                            }
+                        } else {
+                            view! { cx, }
+                        })
+
+                        (if item.document_data.any_metadata() {
+                            let document_data = item.document_data.clone();
+                            view! { cx,
+                                details {
+                                    summary { "Свойства документа" }
+
+                                    (if let Some(title) = document_data.title.clone() {
+                                        view! { cx,
+                                            p {
+                                                "Заголовок: " (title)
+                                            }
+                                        }
+                                    } else {
+                                        view! { cx, }
+                                    })
+                                    (if let Some(creator) = document_data.creator.clone() {
+                                        view! { cx,
+                                            p {
+                                                "Создатель: " (creator)
+                                            }
+                                        }
+                                    } else {
+                                        view! { cx, }
+                                    })
+                                    (if let Some(doc_created) = document_data.doc_created {
+                                        view! { cx,
+                                            p {
+                                                "Создано: " (doc_created.with_timezone(&Local))
+                                            }
+                                        }
+                                    } else {
+                                        view! { cx, }
+                                    })
+                                    (if let Some(doc_modified) = document_data.doc_modified {
+                                        view! { cx,
+                                            p {
+                                                "Изменено: " (doc_modified.with_timezone(&Local))
+                                            }
+                                        }
+                                    } else {
+                                        view! { cx, }
+                                    })
+                                    (if let Some(num_pages) = document_data.num_pages {
+                                        view! { cx,
+                                            p {
+                                                "Страниц: " (num_pages)
+                                            }
+                                        }
+                                    } else {
+                                        view! { cx, }
+                                    })
+                                    (if let Some(num_words) = document_data.num_words {
+                                        view! { cx,
+                                            p {
+                                                "Слов: " (num_words)
+                                            }
+                                        }
+                                    } else {
+                                        view! { cx, }
+                                    })
+                                    (if let Some(num_characters) = document_data.num_characters {
+                                        view! { cx,
+                                            p {
+                                                "Символов: " (num_characters)
                                             }
                                         }
                                     } else {

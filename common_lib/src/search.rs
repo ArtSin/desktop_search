@@ -17,6 +17,8 @@ pub struct SearchRequest {
 
     /// Fields for image files
     pub image_data: ImageSearchRequest,
+    /// Fields for document files
+    pub document_data: DocumentSearchRequest,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -43,6 +45,15 @@ pub struct ImageSearchRequest {
     pub width_to: Option<u32>,
     pub height_from: Option<u32>,
     pub height_to: Option<u32>,
+}
+
+#[skip_serializing_none]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DocumentSearchRequest {
+    pub doc_created_from: Option<DateTime<Utc>>,
+    pub doc_created_to: Option<DateTime<Utc>>,
+    pub doc_modified_from: Option<DateTime<Utc>>,
+    pub doc_modified_to: Option<DateTime<Utc>>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]

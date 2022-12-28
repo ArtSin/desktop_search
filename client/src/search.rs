@@ -119,6 +119,36 @@ async fn get_request_body(
                 search_request.image_data.height_to,
             )
         }),
+        (search_request.document_data.doc_created_from.is_some()
+            || search_request.document_data.doc_created_to.is_some())
+        .then(|| {
+            range(
+                "doc_created",
+                search_request
+                    .document_data
+                    .doc_created_from
+                    .map(|d| d.timestamp()),
+                search_request
+                    .document_data
+                    .doc_created_to
+                    .map(|d| d.timestamp()),
+            )
+        }),
+        (search_request.document_data.doc_modified_from.is_some()
+            || search_request.document_data.doc_modified_to.is_some())
+        .then(|| {
+            range(
+                "doc_modified",
+                search_request
+                    .document_data
+                    .doc_modified_from
+                    .map(|d| d.timestamp()),
+                search_request
+                    .document_data
+                    .doc_modified_to
+                    .map(|d| d.timestamp()),
+            )
+        }),
     ]
     .into_iter()
     .flatten()

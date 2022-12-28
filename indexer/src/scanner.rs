@@ -56,6 +56,7 @@ impl TryFrom<FileInfo> for FileES {
             hash,
             content_type: String::new(),
             image_data: Default::default(),
+            document_data: Default::default(),
         })
     }
 }

@@ -123,7 +123,7 @@ div.radio_checkbox_field>input {
     align-self: flex-end;
 }
 
-#preview>object {
+#preview_object {
     min-width: 0;
     min-height: 0;
     flex: 1 1 auto;

@@ -143,12 +143,10 @@ struct SetServerSettingsArgs<'a> {
 #[component(inline_props)]
 pub fn Settings<'a, G: Html>(
     cx: Scope<'a>,
+    client_settings: &'a Signal<ClientSettings>,
+    server_settings: &'a Signal<ServerSettings>,
     status_dialog_state: &'a Signal<StatusDialogState>,
 ) -> View<G> {
-    // Use default settings until loaded from server
-    let client_settings = create_signal(cx, ClientSettings::default());
-    let server_settings = create_signal(cx, ServerSettings::default());
-
     let server_loaded = create_signal(cx, false);
 
     // Input values for settings

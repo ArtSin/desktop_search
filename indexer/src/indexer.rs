@@ -69,6 +69,28 @@ pub async fn create_index(es_client: &Elasticsearch) -> Result<(), elasticsearch
                     },
                     "height": {
                         "type": "integer"
+                    },
+
+                    "title": {
+                        "type": "text"
+                    },
+                    "creator": {
+                        "type": "text"
+                    },
+                    "doc_created": {
+                        "type": "long"
+                    },
+                    "doc_modified": {
+                        "type": "long"
+                    },
+                    "num_pages": {
+                        "type": "integer"
+                    },
+                    "num_words": {
+                        "type": "integer"
+                    },
+                    "num_characters": {
+                        "type": "integer"
                     }
                 }
             }

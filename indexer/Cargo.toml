@@ -23,7 +23,7 @@ async-trait.workspace = true
 clap = { version = "4.0.27", features = ["derive"] }
 axum = "0.6.0"
 tower = { version = "0.4.13", features = ["timeout"] }
-tower-http = { version = "0.3.4", features = ["trace"] }
+tower-http = { version = "0.3.4", features = ["fs", "trace"] }
 tracing = { version = "0.1.37", features = ["release_max_level_info"] }
 tracing-subscriber = { version = "0.3.16", features = ["env-filter"] }
 tracing-unwrap = "0.10.0"
