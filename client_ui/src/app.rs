@@ -1,23 +1,21 @@
 use std::str::FromStr;
 
-use common_lib::settings::{ClientSettings, ServerSettings};
+use common_lib::settings::Settings;
 use derive_more::Display;
+use js_sys::JSON;
+use serde::{Deserialize, Serialize};
+use serde_wasm_bindgen::{from_value, to_value};
 use sycamore::prelude::*;
 use sycamore::rt::Event;
-use wasm_bindgen::{prelude::*, JsCast};
-use web_sys::HtmlElement;
+use wasm_bindgen::{JsCast, JsValue};
+use wasm_bindgen_futures::JsFuture;
+use web_sys::{HtmlElement, Request, RequestInit, RequestMode, Response};
 
 use crate::{search::Search, settings::Settings, status::Status};
 
 use self::widgets::{StatusDialog, StatusDialogState};
 
 pub mod widgets;
-
-#[wasm_bindgen]
-extern "C" {
-    #[wasm_bindgen(catch, js_namespace = ["window", "__TAURI__", "tauri"])]
-    pub async fn invoke(cmd: &str, args: JsValue) -> Result<JsValue, JsValue>;
-}
 
 #[derive(Display, PartialEq, Eq, Hash, Clone, Copy)]
 enum AppTabs {
@@ -45,8 +43,7 @@ impl FromStr for AppTabs {
 #[component]
 pub fn App<G: Html>(cx: Scope) -> View<G> {
     // Use default settings until loaded from server
-    let client_settings = create_signal(cx, ClientSettings::default());
-    let server_settings = create_signal(cx, ServerSettings::default());
+    let settings = create_signal(cx, Settings::default());
 
     let status_dialog_state = create_signal(cx, StatusDialogState::None);
     let tabs = create_signal(
@@ -80,16 +77,65 @@ pub fn App<G: Html>(cx: Scope) -> View<G> {
         }
 
         div(style={if *curr_tab.get().as_ref() == AppTabs::Search { "display: block;" } else { "display: none;" }}) {
-            Search(client_settings=client_settings, status_dialog_state=status_dialog_state)
+            Search(status_dialog_state=status_dialog_state)
         }
         div(style={if *curr_tab.get().as_ref() == AppTabs::Status { "display: block;" } else { "display: none;" }}) {
             Status(status_dialog_state=status_dialog_state)
         }
         div(style={if *curr_tab.get().as_ref() == AppTabs::Settings { "display: block;" } else { "display: none;" }}) {
-            Settings(client_settings=client_settings, server_settings=server_settings,
-                status_dialog_state=status_dialog_state)
+            Settings(settings=settings, status_dialog_state=status_dialog_state)
         }
 
         StatusDialog(status=status_dialog_state)
     }
+}
+
+async fn fetch_response(
+    uri: &str,
+    method: &str,
+    body: Option<&impl Serialize>,
+) -> Result<Response, JsValue> {
+    let request_body = body
+        .map(|x| to_value(x).map_err(Into::<JsValue>::into))
+        .transpose()?
+        .map(|x| JSON::stringify(&x))
+        .transpose()?
+        .map(JsValue::from);
+
+    let mut opts = RequestInit::new();
+    opts.method(method)
+        .mode(RequestMode::SameOrigin)
+        .body(request_body.as_ref());
+
+    let request = Request::new_with_str_and_init(uri, &opts)?;
+    if request_body.is_some() {
+        request.headers().set("Content-Type", "application/json")?;
+    }
+
+    let window = web_sys::window().unwrap();
+    let response_value = JsFuture::from(window.fetch_with_request(&request)).await?;
+    let response: Response = response_value.dyn_into().unwrap();
+    if response.ok() {
+        Ok(response)
+    } else {
+        Err(JsFuture::from(response.text()?).await?)
+    }
+}
+
+pub async fn fetch<T>(uri: &str, method: &str, body: Option<&impl Serialize>) -> Result<T, JsValue>
+where
+    T: for<'de> Deserialize<'de>,
+{
+    let response = fetch_response(uri, method, body).await?;
+    let response_json = JsFuture::from(response.json()?).await?;
+    from_value(response_json).map_err(|e| e.into())
+}
+
+pub async fn fetch_empty(
+    uri: &str,
+    method: &str,
+    body: Option<&impl Serialize>,
+) -> Result<(), JsValue> {
+    fetch_response(uri, method, body).await?;
+    Ok(())
 }

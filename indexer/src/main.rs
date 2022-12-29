@@ -1,6 +1,11 @@
 use std::{net::SocketAddr, sync::Arc, time::Duration};
 
-use axum::{error_handling::HandleErrorLayer, http::StatusCode, routing::get, BoxError, Router};
+use axum::{
+    error_handling::HandleErrorLayer,
+    http::StatusCode,
+    routing::{get, post},
+    BoxError, Router,
+};
 use common_lib::IndexingStatus;
 use elasticsearch::{http::transport::Transport, Elasticsearch};
 use tokio::{signal, sync::RwLock};
@@ -14,17 +19,20 @@ use tracing_unwrap::ResultExt;
 
 use crate::{
     indexer::create_index,
-    settings::{read_settings_file, InternalServerSettings},
+    settings::{read_settings_file, InternalSettings},
 };
 
+mod actions;
 mod file_server;
 mod indexer;
 mod parser;
 mod scanner;
+mod search;
 mod settings;
+mod status;
 
 pub struct ServerState {
-    settings: InternalServerSettings,
+    settings: InternalSettings,
     es_client: Elasticsearch,
     reqwest_client: reqwest::Client,
     indexing_status: IndexingStatus,
@@ -72,7 +80,13 @@ async fn main() {
             "/index",
             get(indexer::indexing_status).patch(indexer::index),
         )
+        .route("/search", post(search::search))
+        .route("/index_stats", get(status::get_index_stats))
+        .route("/open_path", post(actions::open_path))
+        .route("/pick_file", post(actions::pick_file))
+        .route("/pick_folder", post(actions::pick_folder))
         .route("/file", get(file_server::get_file))
+        .fallback(file_server::get_client_file)
         .with_state(Arc::new(RwLock::new(ServerState {
             settings,
             es_client,
@@ -94,7 +108,7 @@ async fn main() {
                         ))
                     }
                 }))
-                .timeout(Duration::from_secs(10))
+                .timeout(Duration::MAX)
                 .layer(TraceLayer::new_for_http()),
         );
     tracing::info!("Listening on http://{}", address);

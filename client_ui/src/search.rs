@@ -6,20 +6,19 @@ use std::{
 
 use chrono::{DateTime, Local, TimeZone, Utc};
 use common_lib::{
+    actions::{OpenPathArgs, PickFileResult},
     elasticsearch::{FileES, FileMetadata},
     search::{
         DocumentSearchRequest, ImageQuery, ImageSearchRequest, SearchRequest, SearchResponse,
         TextQuery,
     },
-    settings::ClientSettings,
 };
-use serde::Serialize;
-use serde_wasm_bindgen::{from_value, to_value};
 use sycamore::{futures::spawn_local_scoped, prelude::*};
 use url::Url;
+use wasm_bindgen::JsValue;
 
 use crate::{
-    app::{invoke, widgets::StatusDialogState},
+    app::{fetch, fetch_empty, widgets::StatusDialogState},
     settings::{MAX_FILE_SIZE_MAX, MAX_FILE_SIZE_MIN},
 };
 
@@ -35,24 +34,9 @@ struct PreviewData {
     content_type: String,
 }
 
-#[derive(Serialize)]
-struct OpenPathArgs {
-    path: PathBuf,
-}
-
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-struct SearchRequestArgs<'a> {
-    search_request: &'a SearchRequest,
-}
-
-fn get_local_file_url<P: AsRef<Path>>(
-    client_settings: &ReadSignal<ClientSettings>,
-    path: P,
-    thumbnail: bool,
-) -> Url {
-    let mut file_url = client_settings.get().indexer_url.clone();
-    file_url.set_path("file");
+fn get_local_file_url<P: AsRef<Path>>(path: P, thumbnail: bool) -> Url {
+    let base = Url::parse(&web_sys::window().unwrap().location().origin().unwrap()).unwrap();
+    let mut file_url = base.join("/file").unwrap();
     file_url
         .query_pairs_mut()
         .append_pair("path", &path.as_ref().to_string_lossy())
@@ -60,10 +44,21 @@ fn get_local_file_url<P: AsRef<Path>>(
     file_url
 }
 
+async fn pick_file() -> Result<PickFileResult, JsValue> {
+    fetch("/pick_file", "POST", None::<&()>).await
+}
+
+async fn search(search_request: &SearchRequest) -> Result<SearchResponse, JsValue> {
+    fetch("/search", "POST", Some(search_request)).await
+}
+
+async fn open_path(args: &OpenPathArgs) -> Result<(), JsValue> {
+    fetch_empty("/open_path", "POST", Some(args)).await
+}
+
 #[component(inline_props)]
 pub fn Search<'a, G: Html>(
     cx: Scope<'a>,
-    client_settings: &'a ReadSignal<ClientSettings>,
     status_dialog_state: &'a Signal<StatusDialogState>,
 ) -> View<G> {
     const IMAGE_SIZE_MIN: u32 = 1;
@@ -120,15 +115,21 @@ pub fn Search<'a, G: Html>(
 
     let select_file = move |_| {
         spawn_local_scoped(cx, async {
-            let path_option: Option<PathBuf> = from_value(
-                invoke("pick_file", wasm_bindgen::JsValue::UNDEFINED)
-                    .await
-                    .unwrap(),
-            )
-            .unwrap();
+            status_dialog_state.set(StatusDialogState::Loading);
 
-            if let Some(path) = path_option {
-                query_image_path.set(path);
+            match pick_file().await {
+                Ok(res) => {
+                    if let Some(path) = res.path {
+                        query_image_path.set(path);
+                    }
+                    status_dialog_state.set(StatusDialogState::None);
+                }
+                Err(e) => {
+                    status_dialog_state.set(StatusDialogState::Error(format!(
+                        "❌ Ошибка открытия диалога: {:#?}",
+                        e
+                    )));
+                }
             }
         });
     };
@@ -166,26 +167,17 @@ pub fn Search<'a, G: Html>(
                 },
             };
 
-            match invoke(
-                "search",
-                to_value(&SearchRequestArgs {
-                    search_request: &search_request,
-                })
-                .unwrap(),
-            )
-            .await
-            .map_err(|e| e.as_string().unwrap())
-            .and_then(|x| from_value::<SearchResponse>(x).map_err(|e| e.to_string()))
-            {
+            match search(&search_request).await {
                 Ok(x) => {
                     search_results.set(x.results);
                     status_dialog_state.set(StatusDialogState::None);
                 }
                 Err(e) => {
                     search_results.set(Vec::new());
-                    status_dialog_state.set(StatusDialogState::Error(
-                        "❌ Ошибка поиска: ".to_owned() + &e,
-                    ));
+                    status_dialog_state.set(StatusDialogState::Error(format!(
+                        "❌ Ошибка поиска: {:#?}",
+                        e
+                    )));
                 }
             }
         })
@@ -212,7 +204,7 @@ pub fn Search<'a, G: Html>(
                             button(form="search", type="submit", disabled=*any_invalid.get()) { "Искать" }
                         }
                         (if !query_image_path.get().as_os_str().is_empty() {
-                            let img_url = get_local_file_url(client_settings, &*query_image_path.get(), true);
+                            let img_url = get_local_file_url(&*query_image_path.get(), false);
                             view! { cx,
                                 div {
                                     img(src=img_url, id="query_image") {}
@@ -287,13 +279,12 @@ pub fn Search<'a, G: Html>(
 
             main {
                 SearchResults(search_results=search_results, display_preview=display_preview,
-                    preview_data=preview_data, client_settings=client_settings,
-                    status_dialog_state=status_dialog_state)
+                    preview_data=preview_data, status_dialog_state=status_dialog_state)
             }
 
             (if *display_preview.get() {
                 let content_type = preview_data.get().content_type.clone();
-                let object_url = get_local_file_url(client_settings, &preview_data.get().path, false);
+                let object_url = get_local_file_url(&preview_data.get().path, false);
                 view! { cx,
                     aside(id="preview") {
                         button(form="search", type="button", on:click=hide_preview) { "✖" }
@@ -547,7 +538,6 @@ fn SearchResults<'a, G: Html>(
     search_results: &'a ReadSignal<Vec<FileES>>,
     display_preview: &'a Signal<bool>,
     preview_data: &'a Signal<PreviewData>,
-    client_settings: &'a ReadSignal<ClientSettings>,
     status_dialog_state: &'a Signal<StatusDialogState>,
 ) -> View<G> {
     view! { cx,
@@ -570,17 +560,16 @@ fn SearchResults<'a, G: Html>(
                 };
                 let open_path = move |path| {
                     spawn_local_scoped(cx, async move {
-                        if let Err(e) = invoke(
-                            "open_path",
-                            to_value(&OpenPathArgs {
-                                path,
-                            })
-                            .unwrap(),
-                        )
-                        .await
-                        .map_err(|e| e.as_string().unwrap()) {
-                            status_dialog_state.set(StatusDialogState::Error("❌ Ошибка открытия: ".to_owned() + &e));
+                        status_dialog_state.set(StatusDialogState::Loading);
+
+                        if let Err(e) = open_path(&OpenPathArgs { path }).await {
+                            status_dialog_state.set(StatusDialogState::Error(format!(
+                                "❌ Ошибка открытия: {:#?}",
+                                e
+                            )));
+                            return;
                         }
+                        status_dialog_state.set(StatusDialogState::None);
                     })
                 };
                 let open_file = move |_| {
@@ -597,7 +586,7 @@ fn SearchResults<'a, G: Html>(
                         (if item.content_type.starts_with("image")
                                 || item.content_type.starts_with("video")
                                 || item.content_type.starts_with("audio") {
-                            let img_url = get_local_file_url(client_settings, &path_, true);
+                            let img_url = get_local_file_url(&path_, true);
                             view! { cx,
                                 img(src=(img_url), onerror="this.style.display='none'") {}
                             }

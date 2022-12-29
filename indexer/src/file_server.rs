@@ -1,18 +1,37 @@
+use std::process::Stdio;
+
 use axum::{
     body::{boxed, Body, BoxBody},
     extract::Query,
-    http::{HeaderMap, Request, StatusCode},
+    http::{HeaderMap, Request, StatusCode, Uri},
     response::Response,
 };
 use serde::Deserialize;
 use tokio::process::Command;
 use tower::ServiceExt;
-use tower_http::services::ServeFile;
+use tower_http::services::{ServeDir, ServeFile};
 
 #[derive(Deserialize)]
 pub struct FileQuery {
     path: String,
     thumbnail: bool,
+}
+
+pub async fn get_client_file(uri: Uri) -> Result<Response<BoxBody>, (StatusCode, String)> {
+    let request = Request::builder().uri(uri).body(Body::empty()).unwrap();
+    let res = match ServeDir::new("client_ui/dist/").oneshot(request).await {
+        Ok(res) => Ok(res.map(boxed)),
+        Err(err) => Err((
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("Can't read file: {}", err),
+        )),
+    }?;
+
+    if res.status() == StatusCode::NOT_FOUND {
+        Err((res.status(), "Not Found".to_owned()))
+    } else {
+        Ok(res)
+    }
 }
 
 pub async fn get_file(
@@ -68,6 +87,7 @@ async fn get_thumbnail(path: &str) -> std::io::Result<Vec<u8>> {
             "mjpeg",
             "-",
         ])
+        .stdin(Stdio::null())
         .output()
         .await
         .map(|data| data.stdout)

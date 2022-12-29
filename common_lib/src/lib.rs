@@ -2,6 +2,7 @@ use std::fmt::Display;
 
 use serde::{Deserialize, Serialize};
 
+pub mod actions;
 pub mod elasticsearch;
 pub mod search;
 pub mod settings;

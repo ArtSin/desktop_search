@@ -1,5 +1,6 @@
-use std::{cmp::min, path::PathBuf};
+use std::{cmp::min, sync::Arc};
 
+use axum::{extract::State, http::StatusCode, Json};
 use common_lib::{
     elasticsearch::{FileES, ELASTICSEARCH_INDEX, ELASTICSEARCH_MAX_SIZE},
     embeddings::{get_image_search_image_embedding, get_image_search_text_embedding},
@@ -7,24 +8,14 @@ use common_lib::{
 };
 use elasticsearch::{Elasticsearch, SearchParts};
 use serde_json::{json, Value};
-use tauri::{api::dialog::blocking::FileDialogBuilder, async_runtime::RwLock};
+use tokio::sync::RwLock;
 use url::Url;
 
-use crate::ClientState;
+use crate::ServerState;
 
 use self::query::{range, simple_query_string};
 
 const RESULTS_PER_PAGE: u32 = 20;
-
-#[tauri::command]
-pub async fn open_path(path: PathBuf) -> Result<(), String> {
-    open::that(path).map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-pub async fn pick_file() -> Option<PathBuf> {
-    FileDialogBuilder::new().pick_file()
-}
 
 async fn get_request_body(
     reqwest_client: &reqwest::Client,
@@ -208,21 +199,20 @@ fn get_results(es_response_body: &Value) -> Vec<FileES> {
         .collect()
 }
 
-#[tauri::command]
 pub async fn search(
-    state: tauri::State<'_, RwLock<ClientState>>,
-    search_request: SearchRequest,
-) -> Result<SearchResponse, String> {
+    State(state): State<Arc<RwLock<ServerState>>>,
+    Json(search_request): Json<SearchRequest>,
+) -> Result<Json<SearchResponse>, (StatusCode, String)> {
     let reqwest_client = &state.read().await.reqwest_client;
-    let nnserver_url = state.read().await.server_settings.nnserver_url.clone();
+    let nnserver_url = state.read().await.settings.other.nnserver_url.clone();
     let es_request_body = get_request_body(reqwest_client, nnserver_url, search_request)
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
     let es_response_body = get_es_response(&state.read().await.es_client, 0, es_request_body)
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
     let results = get_results(&es_response_body);
-    Ok(SearchResponse { results })
+    Ok(Json(SearchResponse { results }))
 }
 
 mod query {

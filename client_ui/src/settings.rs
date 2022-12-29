@@ -1,26 +1,17 @@
 use std::path::PathBuf;
 
-use common_lib::settings::{ClientSettings, ServerSettings};
-use serde::Serialize;
-use serde_wasm_bindgen::{from_value, to_value};
+use common_lib::{actions::PickFolderResult, settings::Settings};
 use sycamore::{futures::spawn_local_scoped, prelude::*};
 use url::Url;
 use uuid::Uuid;
+use wasm_bindgen::JsValue;
 
-use crate::app::{invoke, widgets::StatusDialogState};
+use crate::app::{fetch, fetch_empty, widgets::StatusDialogState};
 
 pub const MAX_FILE_SIZE_MIN: f64 = 0.01;
 pub const MAX_FILE_SIZE_MAX: f64 = 1000.0;
 
-trait ClientSettingsUi {
-    fn get_indexer_url_str(&self) -> String;
-
-    fn valid_indexer_url(indexer_url_str: &str) -> bool;
-
-    fn parse(indexer_url_str: &str) -> Self;
-}
-
-trait ServerSettingsUi {
+trait SettingsUi {
     fn get_elasticsearch_url_str(&self) -> String;
     fn get_tika_url_str(&self) -> String;
     fn get_nnserver_url_str(&self) -> String;
@@ -41,23 +32,7 @@ trait ServerSettingsUi {
     ) -> Self;
 }
 
-impl ClientSettingsUi for ClientSettings {
-    fn get_indexer_url_str(&self) -> String {
-        self.indexer_url.to_string()
-    }
-
-    fn valid_indexer_url(indexer_url_str: &str) -> bool {
-        Url::parse(indexer_url_str).is_ok()
-    }
-
-    fn parse(indexer_url_str: &str) -> Self {
-        Self {
-            indexer_url: Url::parse(indexer_url_str).unwrap(),
-        }
-    }
-}
-
-impl ServerSettingsUi for ServerSettings {
+impl SettingsUi for Settings {
     fn get_elasticsearch_url_str(&self) -> String {
         self.elasticsearch_url.to_string()
     }
@@ -128,58 +103,45 @@ impl DirectoryItem {
     }
 }
 
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-struct SetClientSettingsArgs<'a> {
-    client_settings: &'a ClientSettings,
+async fn get_settings() -> Result<Settings, JsValue> {
+    fetch("/settings", "GET", None::<&()>).await
 }
 
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-struct SetServerSettingsArgs<'a> {
-    server_settings: &'a ServerSettings,
+async fn put_settings(settings: &Settings) -> Result<(), JsValue> {
+    fetch_empty("/settings", "PUT", Some(settings)).await
+}
+
+async fn pick_folder() -> Result<PickFolderResult, JsValue> {
+    fetch("/pick_folder", "POST", None::<&()>).await
 }
 
 #[component(inline_props)]
 pub fn Settings<'a, G: Html>(
     cx: Scope<'a>,
-    client_settings: &'a Signal<ClientSettings>,
-    server_settings: &'a Signal<ServerSettings>,
+    settings: &'a Signal<Settings>,
     status_dialog_state: &'a Signal<StatusDialogState>,
 ) -> View<G> {
-    let server_loaded = create_signal(cx, false);
-
     // Input values for settings
-    let indexer_url_str = create_signal(cx, client_settings.get().get_indexer_url_str());
-    let elasticsearch_url_str =
-        create_signal(cx, server_settings.get().get_elasticsearch_url_str());
-    let tika_url_str = create_signal(cx, server_settings.get().get_tika_url_str());
-    let nnserver_url_str = create_signal(cx, server_settings.get().get_nnserver_url_str());
-    let indexing_directories = create_signal(
-        cx,
-        server_settings.get().get_indexing_directories_dir_items(),
-    );
-    let max_file_size_str = create_signal(cx, server_settings.get().get_max_file_size_str());
+    let elasticsearch_url_str = create_signal(cx, settings.get().get_elasticsearch_url_str());
+    let tika_url_str = create_signal(cx, settings.get().get_tika_url_str());
+    let nnserver_url_str = create_signal(cx, settings.get().get_nnserver_url_str());
+    let indexing_directories =
+        create_signal(cx, settings.get().get_indexing_directories_dir_items());
+    let max_file_size_str = create_signal(cx, settings.get().get_max_file_size_str());
 
     // Validation values for settings
-    let indexer_url_valid = create_memo(cx, || {
-        ClientSettings::valid_indexer_url(indexer_url_str.get().as_str())
-    });
     let elasticsearch_url_valid = create_memo(cx, || {
-        ServerSettings::valid_elasticsearch_url(elasticsearch_url_str.get().as_str())
+        Settings::valid_elasticsearch_url(elasticsearch_url_str.get().as_str())
     });
-    let tika_url_valid = create_memo(cx, || {
-        ServerSettings::valid_tika_url(tika_url_str.get().as_str())
-    });
+    let tika_url_valid = create_memo(cx, || Settings::valid_tika_url(tika_url_str.get().as_str()));
     let nnserver_url_valid = create_memo(cx, || {
-        ServerSettings::valid_nnserver_url(nnserver_url_str.get().as_str())
+        Settings::valid_nnserver_url(nnserver_url_str.get().as_str())
     });
     let max_file_size_valid = create_memo(cx, || {
-        ServerSettings::valid_max_file_size(max_file_size_str.get().as_str())
+        Settings::valid_max_file_size(max_file_size_str.get().as_str())
     });
     let any_invalid = create_memo(cx, || {
-        !*indexer_url_valid.get()
-            || !*elasticsearch_url_valid.get()
+        !*elasticsearch_url_valid.get()
             || !*tika_url_valid.get()
             || !*nnserver_url_valid.get()
             || !*max_file_size_valid.get()
@@ -187,64 +149,31 @@ pub fn Settings<'a, G: Html>(
 
     // Set input values from settings when they are updated (on load from server or reset)
     create_effect(cx, || {
-        indexer_url_str.set(client_settings.get().get_indexer_url_str())
-    });
-    create_effect(cx, || {
-        elasticsearch_url_str.set(server_settings.get().get_elasticsearch_url_str());
-        tika_url_str.set(server_settings.get().get_tika_url_str());
-        nnserver_url_str.set(server_settings.get().get_nnserver_url_str());
-        indexing_directories.set(server_settings.get().get_indexing_directories_dir_items());
-        max_file_size_str.set(server_settings.get().get_max_file_size_str());
+        elasticsearch_url_str.set(settings.get().get_elasticsearch_url_str());
+        tika_url_str.set(settings.get().get_tika_url_str());
+        nnserver_url_str.set(settings.get().get_nnserver_url_str());
+        indexing_directories.set(settings.get().get_indexing_directories_dir_items());
+        max_file_size_str.set(settings.get().get_max_file_size_str());
     });
     let reset_settings = |_| {
-        client_settings.trigger_subscribers();
-        server_settings.trigger_subscribers();
-    };
-
-    let load_client_settings = move || async move {
-        match invoke("get_client_settings", wasm_bindgen::JsValue::UNDEFINED)
-            .await
-            .map_err(|e| e.as_string().unwrap())
-            .and_then(|x| from_value(x).map_err(|e| e.to_string()))
-        {
-            Ok(x) => {
-                client_settings.set(x);
-                true
-            }
-            Err(e) => {
-                status_dialog_state.set(StatusDialogState::Error(
-                    "❌ Ошибка загрузки клиентских настроек: ".to_owned() + &e,
-                ));
-                false
-            }
-        }
-    };
-    let load_server_settings = move || async move {
-        match invoke("get_server_settings", wasm_bindgen::JsValue::UNDEFINED)
-            .await
-            .map_err(|e| e.as_string().unwrap())
-            .and_then(|x| from_value(x).map_err(|e| e.to_string()))
-        {
-            Ok(x) => {
-                server_settings.set(x);
-                server_loaded.set(true);
-                true
-            }
-            Err(e) => {
-                status_dialog_state.set(StatusDialogState::Error(
-                    "❌ Ошибка загрузки серверных настроек: ".to_owned() + &e,
-                ));
-                false
-            }
-        }
+        settings.trigger_subscribers();
     };
 
     // Load settings
     spawn_local_scoped(cx, async move {
         status_dialog_state.set(StatusDialogState::Loading);
 
-        if load_client_settings().await && load_server_settings().await {
-            status_dialog_state.set(StatusDialogState::None);
+        match get_settings().await {
+            Ok(res) => {
+                settings.set(res);
+                status_dialog_state.set(StatusDialogState::None);
+            }
+            Err(e) => {
+                status_dialog_state.set(StatusDialogState::Error(format!(
+                    "❌ Ошибка загрузки настроек: {:#?}",
+                    e
+                )));
+            }
         }
     });
 
@@ -253,56 +182,23 @@ pub fn Settings<'a, G: Html>(
         spawn_local_scoped(cx, async move {
             status_dialog_state.set(StatusDialogState::Loading);
 
-            let new_client_settings = ClientSettings::parse(&indexer_url_str.get());
+            let new_settings = Settings::parse(
+                &elasticsearch_url_str.get(),
+                &tika_url_str.get(),
+                &nnserver_url_str.get(),
+                &indexing_directories.get(),
+                &max_file_size_str.get(),
+            );
 
-            if let Err(e) = invoke(
-                "set_client_settings",
-                to_value(&SetClientSettingsArgs {
-                    client_settings: &new_client_settings,
-                })
-                .unwrap(),
-            )
-            .await
-            {
-                status_dialog_state.set(StatusDialogState::Error(
-                    "❌ Ошибка сохранения клиентских настроек: ".to_owned()
-                        + &e.as_string().unwrap(),
-                ));
+            if let Err(e) = put_settings(&new_settings).await {
+                status_dialog_state.set(StatusDialogState::Error(format!(
+                    "❌ Ошибка сохранения настроек: {:#?}",
+                    e
+                )));
                 return;
             }
 
-            client_settings.set(new_client_settings);
-
-            if *server_loaded.get() {
-                let new_server_settings = ServerSettings::parse(
-                    &elasticsearch_url_str.get(),
-                    &tika_url_str.get(),
-                    &nnserver_url_str.get(),
-                    &indexing_directories.get(),
-                    &max_file_size_str.get(),
-                );
-
-                if let Err(e) = invoke(
-                    "set_server_settings",
-                    to_value(&SetServerSettingsArgs {
-                        server_settings: &new_server_settings,
-                    })
-                    .unwrap(),
-                )
-                .await
-                {
-                    status_dialog_state.set(StatusDialogState::Error(
-                        "❌ Ошибка сохранения серверных настроек: ".to_owned()
-                            + &e.as_string().unwrap(),
-                    ));
-                    return;
-                }
-
-                server_settings.set(new_server_settings);
-            } else if !load_server_settings().await {
-                return;
-            };
-
+            settings.set(new_settings);
             status_dialog_state.set(StatusDialogState::Info("✅ Настройки сохранены".to_owned()));
         })
     };
@@ -312,37 +208,26 @@ pub fn Settings<'a, G: Html>(
             main {
                 form(id="settings", on:submit=set_settings, action="javascript:void(0);") {
                     fieldset {
-                        legend { "Клиентские настройки" }
-                        TextSetting(id="indexer_url", label="URL сервера индексации: ",
-                            value=indexer_url_str, valid=indexer_url_valid)
+                        legend { "Серверные настройки" }
+                        TextSetting(id="elasticsearch_url", label="URL сервера Elasticsearch: ",
+                            value=elasticsearch_url_str, valid=elasticsearch_url_valid)
+                        TextSetting(id="tika_url", label="URL сервера Apache Tika: ",
+                            value=tika_url_str, valid=tika_url_valid)
+                        TextSetting(id="nnserver_url", label="URL сервера нейронных сетей: ",
+                            value=nnserver_url_str, valid=nnserver_url_valid)
                     }
 
-                    (if *server_loaded.get() {
-                        view! { cx,
-                            fieldset {
-                                legend { "Серверные настройки" }
-                                TextSetting(id="elasticsearch_url", label="URL сервера Elasticsearch: ",
-                                    value=elasticsearch_url_str, valid=elasticsearch_url_valid)
-                                TextSetting(id="tika_url", label="URL сервера Apache Tika: ",
-                                    value=tika_url_str, valid=tika_url_valid)
-                                TextSetting(id="nnserver_url", label="URL сервера нейронных сетей: ",
-                                    value=nnserver_url_str, valid=nnserver_url_valid)
-                            }
+                    fieldset {
+                        legend { "Индексируемые папки" }
+                        DirectoryList(directory_list=indexing_directories,
+                            status_dialog_state=status_dialog_state)
+                    }
 
-                            fieldset {
-                                legend { "Индексируемые папки" }
-                                DirectoryList(directory_list=indexing_directories)
-                            }
-
-                            fieldset {
-                                legend { "Настройки индексации" }
-                                NumberSetting(id="max_file_size", label="Максимальный размер файла (МиБ): ",
-                                    value=max_file_size_str, valid=max_file_size_valid)
-                            }
-                        }
-                    } else {
-                        view! {cx, }
-                    })
+                    fieldset {
+                        legend { "Настройки индексации" }
+                        NumberSetting(id="max_file_size", label="Максимальный размер файла (МиБ): ",
+                            value=max_file_size_str, valid=max_file_size_valid)
+                    }
 
                     div(class="settings_buttons") {
                         button(type="button", on:click=reset_settings) { "Отмена" }
@@ -398,21 +283,25 @@ fn NumberSetting<'a, G: Html>(cx: Scope<'a>, props: NumberSettingProps<'a>) -> V
 fn DirectoryList<'a, G: Html>(
     cx: Scope<'a>,
     directory_list: &'a Signal<Vec<DirectoryItem>>,
+    status_dialog_state: &'a Signal<StatusDialogState>,
 ) -> View<G> {
     let curr_directory = create_signal(cx, PathBuf::new());
     let curr_directory_empty = create_memo(cx, || curr_directory.get().as_os_str().is_empty());
 
     let select_item = move |_| {
         spawn_local_scoped(cx, async {
-            let path_option: Option<PathBuf> = from_value(
-                invoke("pick_folder", wasm_bindgen::JsValue::UNDEFINED)
-                    .await
-                    .unwrap(),
-            )
-            .unwrap();
-
-            if let Some(path) = path_option {
-                curr_directory.set(path);
+            match pick_folder().await {
+                Ok(res) => {
+                    if let Some(path) = res.path {
+                        curr_directory.set(path);
+                    }
+                }
+                Err(e) => {
+                    status_dialog_state.set(StatusDialogState::Error(format!(
+                        "❌ Ошибка открытия диалога: {:#?}",
+                        e
+                    )));
+                }
             }
         });
     };
@@ -435,7 +324,7 @@ fn DirectoryList<'a, G: Html>(
                 view! { cx,
                     div(class="setting") {
                         input(type="text", readonly=true, value=item.path.display()) {}
-                        button(type="button", on:click=delete_item) { "-" }
+                        button(type="button", on:click=delete_item) { "➖" }
                     }
                 }
             },
@@ -445,7 +334,7 @@ fn DirectoryList<'a, G: Html>(
         div(class="setting") {
             input(type="text", readonly=true, value=curr_directory.get().display()) {}
             button(type="button", on:click=select_item) { "Выбрать..." }
-            button(type="button", on:click=add_item, disabled=*curr_directory_empty.get()) { "+" }
+            button(type="button", on:click=add_item, disabled=*curr_directory_empty.get()) { "➕" }
         }
     }
 }

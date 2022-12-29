@@ -15,5 +15,4 @@ Cargo.lock
 
 dist/
 
-ClientSettings.toml
-IndexerSettings.toml
+Settings.toml

@@ -1,25 +1,24 @@
 use std::sync::Arc;
 
 use axum::{extract::State, http::StatusCode, Json};
+use common_lib::settings::Settings;
 use serde::{Deserialize, Serialize};
 use tokio::sync::RwLock;
 use tracing_unwrap::ResultExt;
 
-use common_lib::settings::ServerSettings;
-
 use crate::ServerState;
 
-const SETTINGS_FILE_PATH: &str = "IndexerSettings.toml";
+const SETTINGS_FILE_PATH: &str = "Settings.toml";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
-pub struct InternalServerSettings {
+pub struct InternalSettings {
     pub address: String,
     #[serde(flatten)]
-    pub other: ServerSettings,
+    pub other: Settings,
 }
 
-impl Default for InternalServerSettings {
+impl Default for InternalSettings {
     fn default() -> Self {
         Self {
             address: "127.0.0.1:11000".to_owned(),
@@ -28,7 +27,7 @@ impl Default for InternalServerSettings {
     }
 }
 
-pub async fn read_settings_file() -> InternalServerSettings {
+pub async fn read_settings_file() -> InternalSettings {
     match tokio::fs::read_to_string(SETTINGS_FILE_PATH).await {
         Ok(s) => toml::from_str(&s).expect_or_log("Error reading settings"),
         Err(e) => {
@@ -45,14 +44,14 @@ async fn write_settings_file(state: Arc<RwLock<ServerState>>) -> std::io::Result
 }
 
 /// Get current settings
-pub async fn get_settings(State(state): State<Arc<RwLock<ServerState>>>) -> Json<ServerSettings> {
+pub async fn get_settings(State(state): State<Arc<RwLock<ServerState>>>) -> Json<Settings> {
     Json(state.read().await.settings.other.clone())
 }
 
 /// Set settings from JSON
 pub async fn put_settings(
     State(state): State<Arc<RwLock<ServerState>>>,
-    Json(new_settings): Json<ServerSettings>,
+    Json(new_settings): Json<Settings>,
 ) -> Result<(), (StatusCode, String)> {
     {
         let mut state = state.write().await;

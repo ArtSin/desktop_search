@@ -5,7 +5,7 @@ use common_lib::{
     elasticsearch::{
         FileES, ELASTICSEARCH_INDEX, ELASTICSEARCH_MAX_SIZE, ELASTICSEARCH_PIT_KEEP_ALIVE,
     },
-    settings::ServerSettings,
+    settings::Settings,
 };
 use elasticsearch::{Elasticsearch, SearchParts};
 use once_cell::sync::OnceCell;
@@ -63,7 +63,7 @@ impl TryFrom<FileInfo> for FileES {
 
 impl FileInfo {
     /// Can file be indexed with current settings
-    fn can_index(&self, settings: &ServerSettings) -> bool {
+    fn can_index(&self, settings: &Settings) -> bool {
         self.size <= settings.max_file_size
     }
 
@@ -135,7 +135,7 @@ impl FilesDiff {
 
 /// Recursively iterates list of directories and returns indexable files.
 /// Inaccessible files are skipped
-pub fn get_file_system_files_list(settings: &ServerSettings) -> Vec<FileInfo> {
+pub fn get_file_system_files_list(settings: &Settings) -> Vec<FileInfo> {
     settings
         .indexing_directories
         .iter()

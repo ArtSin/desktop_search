@@ -86,7 +86,7 @@ div.main_container {
 }
 
 aside {
-    max-width: 17em;
+    max-width: 20em;
     margin: 1em;
     flex-shrink: 0;
 }
@@ -128,6 +128,10 @@ div.radio_checkbox_field>input {
     min-height: 0;
     flex: 1 1 auto;
     object-fit: scale-down;
+}
+
+audio#preview_object {
+    flex: 0 0 auto;
 }
 
 main {

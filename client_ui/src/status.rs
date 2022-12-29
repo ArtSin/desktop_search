@@ -1,11 +1,23 @@
 use common_lib::{status::IndexStats, IndexingStatus};
-use serde_wasm_bindgen::from_value;
 use sycamore::{futures::spawn_local_scoped, prelude::*};
+use wasm_bindgen::JsValue;
 
 use crate::app::{
-    invoke,
+    fetch, fetch_empty,
     widgets::{StatusDialogState, StatusMessage},
 };
+
+async fn get_indexing_status() -> Result<IndexingStatus, JsValue> {
+    fetch("/index", "GET", None::<&()>).await
+}
+
+async fn get_index_stats() -> Result<IndexStats, JsValue> {
+    fetch("/index_stats", "GET", None::<&()>).await
+}
+
+async fn index() -> Result<(), JsValue> {
+    fetch_empty("/index", "PATCH", None::<&()>).await
+}
 
 #[component(inline_props)]
 pub fn Status<'a, G: Html>(
@@ -22,36 +34,29 @@ pub fn Status<'a, G: Html>(
         spawn_local_scoped(cx, async move {
             status_dialog_state.set(StatusDialogState::Loading);
 
-            match invoke("get_indexing_status", wasm_bindgen::JsValue::UNDEFINED)
-                .await
-                .map_err(|e| e.as_string().unwrap())
-                .and_then(|x| from_value::<IndexingStatus>(x).map_err(|e| e.to_string()))
-            {
-                Ok(x) => {
-                    indexing_status.set(x);
-                    status_dialog_state.set(StatusDialogState::None);
+            match get_indexing_status().await {
+                Ok(res) => {
+                    indexing_status.set(res);
                 }
                 Err(e) => {
-                    status_dialog_state.set(StatusDialogState::Error(
-                        "❌ Ошибка загрузки статуса индексирования: ".to_owned() + &e,
-                    ));
+                    status_dialog_state.set(StatusDialogState::Error(format!(
+                        "❌ Ошибка загрузки статуса индексирования: {:#?}",
+                        e
+                    )));
                     return;
                 }
             }
 
-            match invoke("get_index_stats", wasm_bindgen::JsValue::UNDEFINED)
-                .await
-                .map_err(|e| e.as_string().unwrap())
-                .and_then(|x| from_value::<IndexStats>(x).map_err(|e| e.to_string()))
-            {
-                Ok(x) => {
-                    index_stats.set(x);
+            match get_index_stats().await {
+                Ok(res) => {
+                    index_stats.set(res);
                     status_dialog_state.set(StatusDialogState::None);
                 }
                 Err(e) => {
-                    status_dialog_state.set(StatusDialogState::Error(
-                        "❌ Ошибка загрузки статистики: ".to_owned() + &e,
-                    ));
+                    status_dialog_state.set(StatusDialogState::Error(format!(
+                        "❌ Ошибка загрузки статистики: {:#?}",
+                        e
+                    )));
                 }
             }
         })
@@ -63,13 +68,11 @@ pub fn Status<'a, G: Html>(
         spawn_local_scoped(cx, async move {
             status_dialog_state.set(StatusDialogState::Loading);
 
-            if let Err(e) = invoke("index", wasm_bindgen::JsValue::UNDEFINED)
-                .await
-                .map_err(|e| e.as_string().unwrap())
-            {
-                status_dialog_state.set(StatusDialogState::Error(
-                    "❌ Ошибка индексирования: ".to_owned() + &e,
-                ));
+            if let Err(e) = index().await {
+                status_dialog_state.set(StatusDialogState::Error(format!(
+                    "❌ Ошибка индексирования: {:#?}",
+                    e,
+                )));
                 return;
             }
 
