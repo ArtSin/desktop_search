@@ -1,15 +1,15 @@
 use std::{future::Future, sync::Arc};
 
-use axum::{extract::State, http::StatusCode, Json};
+use axum::{extract::State, http::StatusCode};
 use common_lib::{
     elasticsearch::{FileES, ELASTICSEARCH_BATCH_SIZE, ELASTICSEARCH_INDEX},
-    IndexingStatus,
+    indexer::IndexingEvent,
 };
 use elasticsearch::{http::request::JsonBody, indices::IndicesCreateParts, Elasticsearch};
 use serde_json::{json, Value};
 use tokio::sync::{
     mpsc::{self, UnboundedReceiver, UnboundedSender},
-    RwLock, Semaphore,
+    Semaphore,
 };
 use tracing_unwrap::ResultExt;
 
@@ -18,6 +18,8 @@ use crate::{
     scanner::{get_elasticsearch_files_list, get_file_system_files_list, FileInfo, FilesDiff},
     ServerState,
 };
+
+pub mod status;
 
 /// Creates index for storing indexed files, if it doesn't exist
 pub async fn create_index(es_client: &Elasticsearch) -> Result<(), elasticsearch::Error> {
@@ -100,19 +102,38 @@ pub async fn create_index(es_client: &Elasticsearch) -> Result<(), elasticsearch
     Ok(())
 }
 
-/// Process all files with given function and send results to channel, call function on each error.
+/// Update indexing status and send event to channel
+async fn on_event(state: Arc<ServerState>, event: IndexingEvent) {
+    match &event {
+        IndexingEvent::Started => tracing::info!("Indexing started"),
+        IndexingEvent::DiffCalculated { .. } => tracing::info!("Difference calculated"),
+        IndexingEvent::Error(e) => tracing::error!("Error while indexing: {}", e),
+        IndexingEvent::Finished => tracing::info!("Indexing finished"),
+        _ => {}
+    }
+    state
+        .indexing_status
+        .write()
+        .await
+        .process_event(event.clone());
+
+    #[allow(unused_must_use)]
+    {
+        state.indexing_events.send(event);
+    }
+}
+
+/// Process all files with given function and send results to channel, call function on each event.
 /// Processing is parallel with no more than given number of tasks at once
-async fn streaming_process<T, F, Fut, FE>(
-    state: Arc<RwLock<ServerState>>,
+async fn streaming_process<T, F, Fut>(
+    state: Arc<ServerState>,
     tx: UnboundedSender<(Value, Value)>,
     files: Vec<T>,
     process: F,
-    mut on_err: FE,
 ) where
     T: Send + 'static,
-    F: Fn(Arc<RwLock<ServerState>>, T) -> Fut + Send + Sync + Copy + 'static,
+    F: Fn(Arc<ServerState>, T) -> Fut + Send + Sync + Copy + 'static,
     Fut: Future<Output = anyhow::Result<(Value, Value)>> + Send,
-    FE: FnMut(anyhow::Error),
 {
     const NNSERVER_BATCH_SIZE: usize = 32; // make into setting
 
@@ -123,24 +144,22 @@ async fn streaming_process<T, F, Fut, FE>(
         let state = Arc::clone(&state);
         let tx = tx.clone();
         futures.push(tokio::spawn(async move {
-            let res = process(state, file).await;
-            drop(permit);
+            let res = process(Arc::clone(&state), file).await;
             tx.send(res?).unwrap();
-            Ok::<(), _>(())
+            on_event(state, IndexingEvent::FileProcessed).await;
+            drop(permit);
+            Ok::<(), anyhow::Error>(())
         }));
     }
     for f in futures {
         if let Err(e) = f.await.unwrap() {
-            on_err(e);
+            on_event(Arc::clone(&state), IndexingEvent::Error(e.to_string())).await;
         }
     }
 }
 
 /// Create operation to add new file to index
-async fn add_new(
-    state: Arc<RwLock<ServerState>>,
-    file: FileInfo,
-) -> anyhow::Result<(Value, Value)> {
+async fn add_new(state: Arc<ServerState>, file: FileInfo) -> anyhow::Result<(Value, Value)> {
     tracing::debug!("Add file: {}", file.path.display());
 
     let action = json!({"index": {}});
@@ -152,7 +171,7 @@ async fn add_new(
 
 /// Create operation to update file in index given old and new file info
 async fn update_modified(
-    state: Arc<RwLock<ServerState>>,
+    state: Arc<ServerState>,
     (old_file, new_file): (FileInfo, FileInfo),
 ) -> anyhow::Result<(Value, Value)> {
     tracing::debug!("Update file: {}", new_file.path.display());
@@ -165,10 +184,7 @@ async fn update_modified(
 }
 
 /// Create operation to remove file from index
-async fn remove_old(
-    _state: Arc<RwLock<ServerState>>,
-    file: FileInfo,
-) -> anyhow::Result<(Value, Value)> {
+async fn remove_old(_state: Arc<ServerState>, file: FileInfo) -> anyhow::Result<(Value, Value)> {
     tracing::debug!("Remove file: {}", file.path.display());
 
     let action = json!({"delete": { "_id": file._id.unwrap() }});
@@ -177,7 +193,7 @@ async fn remove_old(
 
 /// Accept operations from channel and bulk send them to Elasticsearch
 async fn bulk_send(
-    es_client: &Elasticsearch,
+    state: Arc<ServerState>,
     mut rx: UnboundedReceiver<(Value, Value)>,
 ) -> Result<(), elasticsearch::Error> {
     async fn send_queue(
@@ -204,33 +220,35 @@ async fn bulk_send(
         cnt += 1;
 
         if cnt >= ELASTICSEARCH_BATCH_SIZE {
-            send_queue(es_client, &mut queue).await?;
+            send_queue(&state.es_client, &mut queue).await?;
+            on_event(Arc::clone(&state), IndexingEvent::FilesSent(cnt)).await;
             cnt = 0;
         }
     }
-    send_queue(es_client, &mut queue).await
+    send_queue(&state.es_client, &mut queue).await?;
+    on_event(state, IndexingEvent::FilesSent(cnt)).await;
+    Ok(())
 }
 
 /// Start indexing files
-pub async fn index(State(state): State<Arc<RwLock<ServerState>>>) -> (StatusCode, String) {
-    if !state.read().await.indexing_status.can_start() {
+pub async fn index(State(state): State<Arc<ServerState>>) -> (StatusCode, String) {
+    if !state.indexing_status.read().await.can_start() {
         return (StatusCode::BAD_REQUEST, "Already indexing".to_owned());
     }
 
-    state.write().await.indexing_status = IndexingStatus::Indexing;
+    on_event(Arc::clone(&state), IndexingEvent::Started).await;
+
     tokio::spawn(async move {
         // Get files lists from file system and Elasticsearch
         let tmp = Arc::clone(&state);
         let file_system_files_f = tokio::task::spawn_blocking(move || {
-            get_file_system_files_list(&tmp.blocking_read().settings.other)
+            get_file_system_files_list(&tmp.settings.blocking_read().other)
         });
 
-        let tmp = state.read().await;
-        let elasticsearch_files_f = get_elasticsearch_files_list(&tmp.es_client);
+        let elasticsearch_files_f = get_elasticsearch_files_list(&state.es_client);
 
         let (file_system_files, elasticsearch_files) =
             tokio::join!(file_system_files_f, elasticsearch_files_f);
-        drop(tmp);
 
         let file_system_files = file_system_files.unwrap_or_log();
         let elasticsearch_files = match elasticsearch_files {
@@ -243,58 +261,49 @@ pub async fn index(State(state): State<Arc<RwLock<ServerState>>>) -> (StatusCode
 
         // Calculate lists difference
         let diff = FilesDiff::from_vec(elasticsearch_files, file_system_files);
+        on_event(
+            Arc::clone(&state),
+            IndexingEvent::DiffCalculated {
+                to_add: diff.added.len(),
+                to_remove: diff.removed.len(),
+                to_update: diff.modified.len(),
+            },
+        )
+        .await;
 
         // Create channel to bulk send operations to Elasticsearch
         let tmp = Arc::clone(&state);
         let (tx, rx) = mpsc::unbounded_channel();
-        let bulk_send_f =
-            tokio::spawn(async move { bulk_send(&tmp.read().await.es_client, rx).await });
-
-        // Indexing result, which accumulates all errors
-        let mut new_indexing_status = IndexingStatus::Finished;
-        let mut on_err = |e| {
-            tracing::error!("Error while indexing: {}", e);
-            new_indexing_status.add_error(e);
-        };
+        let bulk_send_f = tokio::spawn(async move { bulk_send(tmp, rx).await });
 
         // Process differences and send operations to channel
-        streaming_process(
-            Arc::clone(&state),
-            tx.clone(),
-            diff.added,
-            add_new,
-            &mut on_err,
-        )
-        .await;
+        streaming_process(Arc::clone(&state), tx.clone(), diff.added, add_new).await;
         streaming_process(
             Arc::clone(&state),
             tx.clone(),
             diff.modified,
             update_modified,
-            &mut on_err,
         )
         .await;
-        streaming_process(
-            Arc::clone(&state),
-            tx,
-            diff.removed,
-            remove_old,
-            &mut on_err,
-        )
-        .await;
+        streaming_process(Arc::clone(&state), tx, diff.removed, remove_old).await;
         if let Err(e) = bulk_send_f.await.unwrap_or_log() {
-            on_err(e.into());
+            on_event(Arc::clone(&state), IndexingEvent::Error(e.to_string())).await;
         }
 
-        state.write().await.indexing_status = new_indexing_status;
-        tracing::info!("Indexing finished");
+        // Finish indexing
+        if let Err(e) = state
+            .es_client
+            .indices()
+            .refresh(elasticsearch::indices::IndicesRefreshParts::Index(&[
+                ELASTICSEARCH_INDEX,
+            ]))
+            .send()
+            .await
+        {
+            on_event(Arc::clone(&state), IndexingEvent::Error(e.to_string())).await;
+        }
+        on_event(Arc::clone(&state), IndexingEvent::Finished).await;
     });
 
     (StatusCode::ACCEPTED, String::new())
-}
-
-pub async fn indexing_status(
-    State(state): State<Arc<RwLock<ServerState>>>,
-) -> Json<IndexingStatus> {
-    Json(state.read().await.indexing_status.clone())
 }

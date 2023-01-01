@@ -6,10 +6,15 @@ use axum::{
     http::{HeaderMap, Request, StatusCode, Uri},
     response::Response,
 };
+use rust_embed::RustEmbed;
 use serde::Deserialize;
 use tokio::process::Command;
 use tower::ServiceExt;
-use tower_http::services::{ServeDir, ServeFile};
+use tower_http::services::ServeFile;
+
+#[derive(RustEmbed)]
+#[folder = "$CARGO_MANIFEST_DIR/../client_ui/dist"]
+struct Assets;
 
 #[derive(Deserialize)]
 pub struct FileQuery {
@@ -18,19 +23,22 @@ pub struct FileQuery {
 }
 
 pub async fn get_client_file(uri: Uri) -> Result<Response<BoxBody>, (StatusCode, String)> {
-    let request = Request::builder().uri(uri).body(Body::empty()).unwrap();
-    let res = match ServeDir::new("client_ui/dist/").oneshot(request).await {
-        Ok(res) => Ok(res.map(boxed)),
-        Err(err) => Err((
-            StatusCode::INTERNAL_SERVER_ERROR,
-            format!("Can't read file: {}", err),
-        )),
-    }?;
+    let mut path = uri.path().trim_start_matches('/');
+    if path.is_empty() {
+        path = "index.html";
+    }
 
-    if res.status() == StatusCode::NOT_FOUND {
-        Err((res.status(), "Not Found".to_owned()))
-    } else {
-        Ok(res)
+    match Assets::get(path) {
+        Some(content) => {
+            let body = boxed(axum::body::Full::from(content.data));
+            let mime = mime_guess::from_path(path).first_or_octet_stream();
+
+            Ok(Response::builder()
+                .header(axum::http::header::CONTENT_TYPE, mime.as_ref())
+                .body(body)
+                .unwrap())
+        }
+        None => Err((StatusCode::NOT_FOUND, "Not Found".to_owned())),
     }
 }
 

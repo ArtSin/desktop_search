@@ -159,13 +159,6 @@ div.settings_buttons>button {
     flex-grow: 1;
 }
 
-p.status {
-    background-color: var(--background);
-    padding: 1em;
-    border-radius: 6px;
-    animation: fade_in 0.5s ease-in;
-}
-
 #dialog>form>menu {
     display: flex;
     justify-content: end;
@@ -196,14 +189,4 @@ p {
 #pagination {
     font-size: 1.17em;
     text-align: center;
-}
-
-@keyframes fade_in {
-    from {
-        opacity: 0;
-    }
-
-    to {
-        opacity: 1;
-    }
 }

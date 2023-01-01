@@ -6,14 +6,16 @@ use axum::{
     routing::{get, post},
     BoxError, Router,
 };
-use common_lib::IndexingStatus;
+use common_lib::indexer::{IndexingEvent, IndexingStatus};
 use elasticsearch::{http::transport::Transport, Elasticsearch};
-use tokio::{signal, sync::RwLock};
+use tokio::{
+    signal,
+    sync::{broadcast, RwLock},
+};
 use tower::ServiceBuilder;
 use tower_http::trace::TraceLayer;
 use tracing_subscriber::{
-    filter::LevelFilter, prelude::__tracing_subscriber_SubscriberExt, util::SubscriberInitExt,
-    EnvFilter,
+    filter::LevelFilter, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter,
 };
 use tracing_unwrap::ResultExt;
 
@@ -23,27 +25,20 @@ use crate::{
 };
 
 mod actions;
+mod embeddings;
 mod file_server;
 mod indexer;
 mod parser;
 mod scanner;
 mod search;
 mod settings;
-mod status;
 
 pub struct ServerState {
-    settings: InternalSettings,
+    settings: RwLock<InternalSettings>,
     es_client: Elasticsearch,
     reqwest_client: reqwest::Client,
-    indexing_status: IndexingStatus,
-}
-
-impl ServerState {
-    fn update_es(&mut self) {
-        let es_transport = Transport::single_node(self.settings.other.elasticsearch_url.as_str())
-            .expect_or_log("Can't create connection to Elasticsearch");
-        self.es_client = Elasticsearch::new(es_transport);
-    }
+    indexing_status: RwLock<IndexingStatus>,
+    indexing_events: broadcast::Sender<IndexingEvent>,
 }
 
 #[tokio::main]
@@ -78,24 +73,24 @@ async fn main() {
         )
         .route(
             "/index",
-            get(indexer::indexing_status).patch(indexer::index),
+            get(indexer::status::indexing_status).patch(indexer::index),
         )
         .route("/search", post(search::search))
-        .route("/index_stats", get(status::get_index_stats))
         .route("/open_path", post(actions::open_path))
         .route("/pick_file", post(actions::pick_file))
         .route("/pick_folder", post(actions::pick_folder))
         .route("/file", get(file_server::get_file))
         .fallback(file_server::get_client_file)
-        .with_state(Arc::new(RwLock::new(ServerState {
-            settings,
+        .with_state(Arc::new(ServerState {
+            settings: RwLock::new(settings),
             es_client,
             reqwest_client: reqwest::Client::builder()
                 .timeout(Duration::from_secs(10))
                 .build()
                 .unwrap(),
-            indexing_status: IndexingStatus::Finished,
-        })))
+            indexing_status: RwLock::new(IndexingStatus::NotStarted),
+            indexing_events: broadcast::channel(64).0, // TODO: capacity from setting
+        }))
         .layer(
             ServiceBuilder::new()
                 .layer(HandleErrorLayer::new(|error: BoxError| async move {
@@ -111,13 +106,15 @@ async fn main() {
                 .timeout(Duration::MAX)
                 .layer(TraceLayer::new_for_http()),
         );
-    tracing::info!("Listening on http://{}", address);
+    let url = format!("http://{}", address);
+    tracing::info!("Listening on {}", url);
+    open::that(url).expect_or_log("Can't open server URL"); // make a setting
 
     axum::Server::bind(&address)
         .serve(app.into_make_service())
         .with_graceful_shutdown(shutdown_signal())
         .await
-        .unwrap();
+        .unwrap_or_log();
 }
 
 async fn shutdown_signal() {

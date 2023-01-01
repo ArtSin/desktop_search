@@ -18,7 +18,7 @@ pub struct TextEmbedding {
 pub async fn get_image_search_image_embedding(
     reqwest_client: &reqwest::Client,
     mut nnserver_url: Url,
-    image_path: impl AsRef<Path>,
+    image_path: impl AsRef<Path> + Clone,
 ) -> anyhow::Result<ImageEmbedding> {
     nnserver_url.set_path("clip/image");
     let req_builder = reqwest_client.post(nnserver_url);

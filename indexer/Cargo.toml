@@ -21,8 +21,10 @@ base16ct.workspace = true
 chrono.workspace = true
 once_cell.workspace = true
 async-trait.workspace = true
+mime_guess.workspace = true
+rust-embed.workspace = true
 clap = { version = "4.0.32", features = ["derive"] }
-axum = "0.6.1"
+axum = { version = "0.6.1", features = ["ws"] }
 tower = { version = "0.4.13", features = ["timeout"] }
 tower-http = { version = "0.3.5", features = ["fs", "trace"] }
 tracing = { version = "0.1.37", features = ["release_max_level_info"] }

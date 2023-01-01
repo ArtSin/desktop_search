@@ -543,6 +543,7 @@ fn SearchResults<'a, G: Html>(
     view! { cx,
         Keyed(
             iterable=search_results,
+            key=|item| item._id.clone().unwrap(),
             view=move |cx, item| {
                 let file_name = item.path.file_name().unwrap().to_string_lossy().into_owned();
                 let path = item.path.to_string_lossy().into_owned();
@@ -726,8 +727,7 @@ fn SearchResults<'a, G: Html>(
                         })
                     }
                 }
-            },
-            key=|item| item._id.clone().unwrap(),
+            }
         )
     }
 }

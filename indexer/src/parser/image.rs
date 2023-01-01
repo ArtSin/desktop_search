@@ -1,15 +1,11 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use common_lib::{
-    elasticsearch::{FileES, ImageData},
-    embeddings::get_image_search_image_embedding,
-};
+use common_lib::elasticsearch::{FileES, ImageData};
 use serde::Deserialize;
 use serde_with::{serde_as, DisplayFromStr};
-use tokio::sync::RwLock;
 
-use crate::ServerState;
+use crate::{embeddings::get_image_search_image_embedding, ServerState};
 
 use super::{Metadata, Parser};
 
@@ -36,7 +32,7 @@ impl Parser for ImageParser {
 
     async fn parse(
         &self,
-        state: Arc<RwLock<ServerState>>,
+        state: Arc<ServerState>,
         file: &mut FileES,
         metadata: &Metadata,
     ) -> anyhow::Result<()> {
@@ -45,8 +41,8 @@ impl Parser for ImageParser {
             file.path.display()
         );
 
-        let reqwest_client = &state.read().await.reqwest_client;
-        let nnserver_url = state.read().await.settings.other.nnserver_url.clone();
+        let reqwest_client = &state.reqwest_client;
+        let nnserver_url = state.settings.read().await.other.nnserver_url.clone();
         let embedding =
             get_image_search_image_embedding(reqwest_client, nnserver_url, &file.path).await?;
 

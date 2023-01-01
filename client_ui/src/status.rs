@@ -1,19 +1,11 @@
-use common_lib::{status::IndexStats, IndexingStatus};
+use common_lib::indexer::{IndexStats, IndexingStatus, IndexingWSMessage};
+use futures::StreamExt;
+use gloo_net::websocket::{futures::WebSocket, Message};
 use sycamore::{futures::spawn_local_scoped, prelude::*};
+use url::Url;
 use wasm_bindgen::JsValue;
 
-use crate::app::{
-    fetch, fetch_empty,
-    widgets::{StatusDialogState, StatusMessage},
-};
-
-async fn get_indexing_status() -> Result<IndexingStatus, JsValue> {
-    fetch("/index", "GET", None::<&()>).await
-}
-
-async fn get_index_stats() -> Result<IndexStats, JsValue> {
-    fetch("/index_stats", "GET", None::<&()>).await
-}
+use crate::app::{fetch_empty, widgets::StatusDialogState};
 
 async fn index() -> Result<(), JsValue> {
     fetch_empty("/index", "PATCH", None::<&()>).await
@@ -24,68 +16,130 @@ pub fn Status<'a, G: Html>(
     cx: Scope<'a>,
     status_dialog_state: &'a Signal<StatusDialogState>,
 ) -> View<G> {
-    let indexing_status = create_signal(cx, IndexingStatus::Finished);
+    let indexing_status = create_signal(cx, IndexingStatus::NotStarted);
     let index_stats = create_signal(cx, IndexStats::default());
 
-    let indexing_status_str = create_memo(cx, || indexing_status.get().to_string());
+    // let indexing_status_str = create_memo(cx, || indexing_status.get().clone().to_string());
     let is_indexing = create_memo(cx, || !indexing_status.get().can_start());
 
-    let update = move || {
+    spawn_local_scoped(cx, async move {
+        status_dialog_state.set(StatusDialogState::Loading);
+
+        let mut ws_url =
+            Url::parse(&web_sys::window().unwrap().location().origin().unwrap()).unwrap();
+        ws_url.set_scheme("ws").unwrap();
+        ws_url.set_path("/index");
+        let ws = WebSocket::open(ws_url.as_str()).unwrap();
+        let (_, mut ws_read) = ws.split();
         spawn_local_scoped(cx, async move {
-            status_dialog_state.set(StatusDialogState::Loading);
-
-            match get_indexing_status().await {
-                Ok(res) => {
-                    indexing_status.set(res);
+            if let Err(e) = async {
+                while let Some(msg) = ws_read.next().await {
+                    match msg.map_err(|e| e.to_string())? {
+                        Message::Text(msg) => {
+                            let msg: IndexingWSMessage = serde_json::from_str(&msg).unwrap();
+                            match msg {
+                                IndexingWSMessage::IndexingStatus(x) => indexing_status.set(x),
+                                IndexingWSMessage::IndexingEvent(x) => {
+                                    indexing_status.modify().process_event(x)
+                                }
+                                IndexingWSMessage::IndexStats(x) => index_stats.set(x),
+                                IndexingWSMessage::Error(e) => return Err(e),
+                            }
+                        }
+                        _ => unreachable!(),
+                    }
                 }
-                Err(e) => {
-                    status_dialog_state.set(StatusDialogState::Error(format!(
-                        "❌ Ошибка загрузки статуса индексирования: {:#?}",
-                        e
-                    )));
-                    return;
-                }
+                Ok::<_, String>(())
             }
-
-            match get_index_stats().await {
-                Ok(res) => {
-                    index_stats.set(res);
-                    status_dialog_state.set(StatusDialogState::None);
-                }
-                Err(e) => {
-                    status_dialog_state.set(StatusDialogState::Error(format!(
-                        "❌ Ошибка загрузки статистики: {:#?}",
-                        e
-                    )));
-                }
+            .await
+            {
+                status_dialog_state.set(StatusDialogState::Error(format!(
+                    "❌ Ошибка загрузки статуса индексирования: {}",
+                    e
+                )));
             }
-        })
-    };
-
-    update();
+        });
+    });
 
     let index = move |_| {
         spawn_local_scoped(cx, async move {
             status_dialog_state.set(StatusDialogState::Loading);
 
-            if let Err(e) = index().await {
-                status_dialog_state.set(StatusDialogState::Error(format!(
-                    "❌ Ошибка индексирования: {:#?}",
-                    e,
-                )));
-                return;
+            match index().await {
+                Ok(_) => {
+                    status_dialog_state.set(StatusDialogState::None);
+                }
+                Err(e) => {
+                    status_dialog_state.set(StatusDialogState::Error(format!(
+                        "❌ Ошибка индексирования: {:#?}",
+                        e,
+                    )));
+                }
             }
-
-            update();
         })
     };
 
     view! { cx,
         div(class="main_container") {
             main {
-                StatusMessage(status_str=indexing_status_str)
-
                 form(id="status", on:submit=index, action="javascript:void(0);") {
+                    fieldset {
+                        legend { "Индексация" }
+                        p {
+                            "Статус: " (indexing_status.get())
+                        }
+                        (if let IndexingStatus::Finished(_) = *indexing_status.get() {
+                            view! { cx,
+                                p {
+                                    "Результаты последней индексации:"
+                                }
+                            }
+                        } else {
+                            view! { cx, }
+                        })
+                        (match (*indexing_status.get()).clone() {
+                            IndexingStatus::Indexing(mut data) | IndexingStatus::Finished(mut data) => {
+                                const MAX_ERROR_CNT: usize = 20;
+
+                                let errors_cnt = data.errors.len();
+                                data.errors.truncate(MAX_ERROR_CNT);
+                                let errors = create_signal(cx, data.errors);
+                                view! { cx,
+                                    p {
+                                        "Добавление " (data.to_add) ", удаление " (data.to_remove)
+                                        ", обновление " (data.to_update) " файлов в индексе"
+                                    }
+                                    p {
+                                        "Обработано " (data.processed) " файлов, загружено "
+                                        (data.sent) " изменений"
+                                    }
+                                    Keyed(
+                                        iterable=errors,
+                                        key=|e| e.to_owned(),
+                                        view=move |cx, e| {
+                                            view! { cx,
+                                                p {
+                                                    "❌ Ошибка индексации: " (e)
+                                                }
+                                            }
+                                        }
+                                    )
+                                    (if errors_cnt > MAX_ERROR_CNT {
+                                        view! { cx,
+                                            p {
+                                                "(ещё " (errors_cnt - MAX_ERROR_CNT) " ошибок)"
+                                            }
+                                        }
+                                    } else {
+                                        view! { cx, }
+                                    })
+                                }
+                            }
+                            _ => {
+                                view! { cx, }
+                            }
+                        })
+                    }
                     fieldset {
                         legend { "Статистика" }
                         p {
@@ -98,7 +152,6 @@ pub fn Status<'a, G: Html>(
                     }
 
                     div(class="settings_buttons") {
-                        button(type="button", on:click=move |_| update()) { "Обновить статус" }
                         button(type="submit", disabled=*is_indexing.get()) { "Индексировать" }
                     }
                 }

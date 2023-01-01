@@ -3,15 +3,16 @@ use std::{cmp::min, sync::Arc};
 use axum::{extract::State, http::StatusCode, Json};
 use common_lib::{
     elasticsearch::{FileES, ELASTICSEARCH_INDEX, ELASTICSEARCH_MAX_SIZE},
-    embeddings::{get_image_search_image_embedding, get_image_search_text_embedding},
     search::{ImageQuery, QueryType, SearchRequest, SearchResponse, TextQuery},
 };
 use elasticsearch::{Elasticsearch, SearchParts};
 use serde_json::{json, Value};
-use tokio::sync::RwLock;
 use url::Url;
 
-use crate::ServerState;
+use crate::{
+    embeddings::{get_image_search_image_embedding, get_image_search_text_embedding},
+    ServerState,
+};
 
 use self::query::{range, simple_query_string};
 
@@ -200,15 +201,14 @@ fn get_results(es_response_body: &Value) -> Vec<FileES> {
 }
 
 pub async fn search(
-    State(state): State<Arc<RwLock<ServerState>>>,
+    State(state): State<Arc<ServerState>>,
     Json(search_request): Json<SearchRequest>,
 ) -> Result<Json<SearchResponse>, (StatusCode, String)> {
-    let reqwest_client = &state.read().await.reqwest_client;
-    let nnserver_url = state.read().await.settings.other.nnserver_url.clone();
-    let es_request_body = get_request_body(reqwest_client, nnserver_url, search_request)
+    let nnserver_url = state.settings.read().await.other.nnserver_url.clone();
+    let es_request_body = get_request_body(&state.reqwest_client, nnserver_url, search_request)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
-    let es_response_body = get_es_response(&state.read().await.es_client, 0, es_request_body)
+    let es_response_body = get_es_response(&state.es_client, 0, es_request_body)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
     let results = get_results(&es_response_body);

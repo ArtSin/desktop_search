@@ -5,7 +5,7 @@ use chrono::{DateTime, Local, TimeZone, Utc};
 use common_lib::elasticsearch::{DocumentData, FileES};
 use serde::{de::Error, Deserialize, Deserializer};
 use serde_with::{serde_as, DisplayFromStr};
-use tokio::{fs::File, sync::RwLock};
+use tokio::fs::File;
 
 use crate::ServerState;
 
@@ -20,7 +20,7 @@ pub trait Parser {
     fn is_supported_content_type(&self, content_type: &str) -> bool;
     async fn parse(
         &self,
-        state: Arc<RwLock<ServerState>>,
+        state: Arc<ServerState>,
         file: &mut FileES,
         metadata: &Metadata,
     ) -> anyhow::Result<()>;
@@ -68,17 +68,14 @@ pub struct DocumentMetadata {
     num_characters: Option<u32>,
 }
 
-async fn get_metadata(
-    state: Arc<RwLock<ServerState>>,
-    file: &mut FileES,
-) -> anyhow::Result<Metadata> {
+async fn get_metadata(state: Arc<ServerState>, file: &mut FileES) -> anyhow::Result<Metadata> {
     if file.size == 0 {
         return Ok(Metadata::default());
     }
 
-    let mut tika_meta_url = state.read().await.settings.other.tika_url.clone();
+    let mut tika_meta_url = state.settings.read().await.other.tika_url.clone();
     tika_meta_url.set_path("meta");
-    let req_builder = state.read().await.reqwest_client.put(tika_meta_url);
+    let req_builder = state.reqwest_client.put(tika_meta_url);
     let metadata = req_builder
         .header("Accept", "application/json")
         .body(File::open(&file.path).await?)
@@ -89,7 +86,7 @@ async fn get_metadata(
     Ok(metadata)
 }
 
-pub async fn parse_file(state: Arc<RwLock<ServerState>>, file: &mut FileES) -> anyhow::Result<()> {
+pub async fn parse_file(state: Arc<ServerState>, file: &mut FileES) -> anyhow::Result<()> {
     let metadata = get_metadata(Arc::clone(&state), file).await?;
     file.content_type = metadata.content_type.clone();
 
