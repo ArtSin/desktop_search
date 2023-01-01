@@ -10,7 +10,6 @@ use serde_with::skip_serializing_none;
 pub const ELASTICSEARCH_INDEX: &str = "files";
 pub const ELASTICSEARCH_MAX_SIZE: i64 = 10000;
 pub const ELASTICSEARCH_PIT_KEEP_ALIVE: &str = "1m";
-pub const ELASTICSEARCH_BATCH_SIZE: usize = 100; // make into setting
 
 pub trait FileMetadata {
     fn any_metadata(&self) -> bool;

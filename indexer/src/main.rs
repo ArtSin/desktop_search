@@ -66,6 +66,9 @@ async fn main() {
         .await
         .expect_or_log("Can't create Elasticsearch index");
 
+    let open_on_start = settings.other.open_on_start;
+    let indexing_events_channel_capacity = 2 * settings.other.nnserver_batch_size;
+
     let app = Router::new()
         .route(
             "/settings",
@@ -89,7 +92,7 @@ async fn main() {
                 .build()
                 .unwrap(),
             indexing_status: RwLock::new(IndexingStatus::NotStarted),
-            indexing_events: broadcast::channel(64).0, // TODO: capacity from setting
+            indexing_events: broadcast::channel(indexing_events_channel_capacity).0,
         }))
         .layer(
             ServiceBuilder::new()
@@ -108,7 +111,9 @@ async fn main() {
         );
     let url = format!("http://{}", address);
     tracing::info!("Listening on {}", url);
-    open::that(url).expect_or_log("Can't open server URL"); // make a setting
+    if open_on_start {
+        open::that(url).expect_or_log("Can't open server URL");
+    }
 
     axum::Server::bind(&address)
         .serve(app.into_make_service())

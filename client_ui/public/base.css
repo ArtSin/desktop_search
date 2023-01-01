@@ -149,6 +149,11 @@ div.setting>input {
     flex-grow: 1;
 }
 
+div.checkbox_setting {
+    display: flex;
+    align-items: center;
+}
+
 div.settings_buttons {
     display: flex;
     justify-content: space-evenly;

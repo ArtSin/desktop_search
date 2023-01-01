@@ -74,7 +74,7 @@ impl FileInfo {
             let file = match std::fs::read(&self.path) {
                 Ok(x) => x,
                 Err(e) => {
-                    tracing::warn!("Error reading file: {}", e);
+                    tracing::error!("Error reading file: {}", e);
                     return Err(e);
                 }
             };
@@ -144,7 +144,7 @@ pub fn get_file_system_files_list(settings: &Settings) -> Vec<FileInfo> {
                 let entry = match entry_res {
                     Ok(x) => x,
                     Err(e) => {
-                        tracing::warn!("Error while scanning file system: {}", e);
+                        tracing::error!("Error while scanning file system: {}", e);
                         return None;
                     }
                 };
@@ -158,7 +158,7 @@ pub fn get_file_system_files_list(settings: &Settings) -> Vec<FileInfo> {
                 let metadata = match std::fs::metadata(path) {
                     Ok(x) => x,
                     Err(e) => {
-                        tracing::warn!("Error getting file metadata: {}", e);
+                        tracing::error!("Error getting file metadata: {}", e);
                         return None;
                     }
                 };

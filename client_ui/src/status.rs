@@ -19,7 +19,6 @@ pub fn Status<'a, G: Html>(
     let indexing_status = create_signal(cx, IndexingStatus::NotStarted);
     let index_stats = create_signal(cx, IndexStats::default());
 
-    // let indexing_status_str = create_memo(cx, || indexing_status.get().clone().to_string());
     let is_indexing = create_memo(cx, || !indexing_status.get().can_start());
 
     spawn_local_scoped(cx, async move {

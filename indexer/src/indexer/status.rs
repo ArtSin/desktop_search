@@ -56,7 +56,6 @@ async fn indexing_status_ws(mut socket: WebSocket, state: Arc<ServerState>) {
         socket.send(ws::Message::Text(event_json)).await.is_ok()
     }
     async fn send_indexing_status(socket: &mut WebSocket, state: &ServerState) -> bool {
-        // TODO: wait a second before sending
         send(socket, state.indexing_status.read().await.clone()).await
     }
     async fn send_index_stats(socket: &mut WebSocket, state: &ServerState) -> bool {

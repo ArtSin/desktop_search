@@ -9,8 +9,11 @@ pub struct Settings {
     pub elasticsearch_url: Url,
     pub tika_url: Url,
     pub nnserver_url: Url,
+    pub open_on_start: bool,
     pub indexing_directories: Vec<PathBuf>,
     pub max_file_size: u64,
+    pub nnserver_batch_size: usize,
+    pub elasticsearch_batch_size: usize,
 }
 
 impl Default for Settings {
@@ -19,8 +22,11 @@ impl Default for Settings {
             elasticsearch_url: Url::parse("http://127.0.0.1:9200").unwrap(),
             tika_url: Url::parse("http://127.0.0.1:9998").unwrap(),
             nnserver_url: Url::parse("http://127.0.0.1:10000").unwrap(),
+            open_on_start: true,
             indexing_directories: Vec::new(),
             max_file_size: 50 * 1024 * 1024, // 50 MiB
+            nnserver_batch_size: 32,
+            elasticsearch_batch_size: 100,
         }
     }
 }

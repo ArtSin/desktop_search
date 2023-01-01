@@ -1,34 +1,47 @@
-use std::path::PathBuf;
-
-use common_lib::{actions::PickFolderResult, settings::Settings};
+use common_lib::settings::Settings;
 use sycamore::{futures::spawn_local_scoped, prelude::*};
 use url::Url;
-use uuid::Uuid;
 use wasm_bindgen::JsValue;
 
 use crate::app::{fetch, fetch_empty, widgets::StatusDialogState};
 
+use self::widgets::{CheckboxSetting, DirectoryItem, DirectoryList, NumberSetting, TextSetting};
+
+mod widgets;
+
 pub const MAX_FILE_SIZE_MIN: f64 = 0.01;
 pub const MAX_FILE_SIZE_MAX: f64 = 1000.0;
+const NNSERVER_BATCH_SIZE_MIN: usize = 1;
+const NNSERVER_BATCH_SIZE_MAX: usize = 256;
+const ELASTICSEARCH_BATCH_SIZE_MIN: usize = 1;
+const ELASTICSEARCH_BATCH_SIZE_MAX: usize = 1000;
 
 trait SettingsUi {
     fn get_elasticsearch_url_str(&self) -> String;
     fn get_tika_url_str(&self) -> String;
     fn get_nnserver_url_str(&self) -> String;
+    fn get_open_on_start(&self) -> bool;
     fn get_indexing_directories_dir_items(&self) -> Vec<DirectoryItem>;
     fn get_max_file_size_str(&self) -> String;
+    fn get_nnserver_batch_size_str(&self) -> String;
+    fn get_elasticsearch_batch_size_str(&self) -> String;
 
     fn valid_elasticsearch_url(elasticsearch_url_str: &str) -> bool;
     fn valid_tika_url(tika_url_str: &str) -> bool;
     fn valid_nnserver_url(nnserver_url_str: &str) -> bool;
     fn valid_max_file_size(max_file_size_str: &str) -> bool;
+    fn valid_nnserver_batch_size(nnserver_batch_size_str: &str) -> bool;
+    fn valid_elasticsearch_batch_size(elasticsearch_batch_size_str: &str) -> bool;
 
     fn parse(
         elasticsearch_url_str: &str,
         tika_url_str: &str,
         nnserver_url_str: &str,
+        open_on_start: bool,
         indexing_directories_dir_items: &[DirectoryItem],
         max_file_size_str: &str,
+        nnserver_batch_size_str: &str,
+        elasticsearch_batch_size_str: &str,
     ) -> Self;
 }
 
@@ -42,6 +55,9 @@ impl SettingsUi for Settings {
     fn get_nnserver_url_str(&self) -> String {
         self.nnserver_url.to_string()
     }
+    fn get_open_on_start(&self) -> bool {
+        self.open_on_start
+    }
     fn get_indexing_directories_dir_items(&self) -> Vec<DirectoryItem> {
         self.indexing_directories
             .iter()
@@ -50,6 +66,12 @@ impl SettingsUi for Settings {
     }
     fn get_max_file_size_str(&self) -> String {
         ((self.max_file_size as f64) / 1024.0 / 1024.0).to_string()
+    }
+    fn get_nnserver_batch_size_str(&self) -> String {
+        self.nnserver_batch_size.to_string()
+    }
+    fn get_elasticsearch_batch_size_str(&self) -> String {
+        self.elasticsearch_batch_size.to_string()
     }
 
     fn valid_elasticsearch_url(elasticsearch_url_str: &str) -> bool {
@@ -67,38 +89,40 @@ impl SettingsUi for Settings {
             .map(|x: f64| (MAX_FILE_SIZE_MIN..=MAX_FILE_SIZE_MAX).contains(&x))
             == Ok(true)
     }
+    fn valid_nnserver_batch_size(nnserver_batch_size_str: &str) -> bool {
+        nnserver_batch_size_str
+            .parse()
+            .map(|x: usize| (NNSERVER_BATCH_SIZE_MIN..=NNSERVER_BATCH_SIZE_MAX).contains(&x))
+            == Ok(true)
+    }
+    fn valid_elasticsearch_batch_size(elasticsearch_batch_size_str: &str) -> bool {
+        elasticsearch_batch_size_str.parse().map(|x: usize| {
+            (ELASTICSEARCH_BATCH_SIZE_MIN..=ELASTICSEARCH_BATCH_SIZE_MAX).contains(&x)
+        }) == Ok(true)
+    }
 
     fn parse(
         elasticsearch_url_str: &str,
         tika_url_str: &str,
         nnserver_url_str: &str,
+        open_on_start: bool,
         indexing_directories_dir_items: &[DirectoryItem],
         max_file_size_str: &str,
+        nnserver_batch_size_str: &str,
+        elasticsearch_batch_size_str: &str,
     ) -> Self {
         Self {
             elasticsearch_url: Url::parse(elasticsearch_url_str).unwrap(),
             tika_url: Url::parse(tika_url_str).unwrap(),
             nnserver_url: Url::parse(nnserver_url_str).unwrap(),
+            open_on_start,
             indexing_directories: indexing_directories_dir_items
                 .iter()
                 .map(|f| f.path.clone())
                 .collect(),
             max_file_size: (max_file_size_str.parse::<f64>().unwrap() * 1024.0 * 1024.0) as u64,
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct DirectoryItem {
-    id: Uuid,
-    path: PathBuf,
-}
-
-impl DirectoryItem {
-    fn new(path: PathBuf) -> Self {
-        Self {
-            id: Uuid::new_v4(),
-            path,
+            nnserver_batch_size: nnserver_batch_size_str.parse().unwrap(),
+            elasticsearch_batch_size: elasticsearch_batch_size_str.parse().unwrap(),
         }
     }
 }
@@ -111,10 +135,6 @@ async fn put_settings(settings: &Settings) -> Result<(), JsValue> {
     fetch_empty("/settings", "PUT", Some(settings)).await
 }
 
-async fn pick_folder() -> Result<PickFolderResult, JsValue> {
-    fetch("/pick_folder", "POST", None::<&()>).await
-}
-
 #[component(inline_props)]
 pub fn Settings<'a, G: Html>(
     cx: Scope<'a>,
@@ -125,26 +145,37 @@ pub fn Settings<'a, G: Html>(
     let elasticsearch_url_str = create_signal(cx, settings.get().get_elasticsearch_url_str());
     let tika_url_str = create_signal(cx, settings.get().get_tika_url_str());
     let nnserver_url_str = create_signal(cx, settings.get().get_nnserver_url_str());
+    let open_on_start = create_signal(cx, settings.get().get_open_on_start());
     let indexing_directories =
         create_signal(cx, settings.get().get_indexing_directories_dir_items());
     let max_file_size_str = create_signal(cx, settings.get().get_max_file_size_str());
+    let nnserver_batch_size_str = create_signal(cx, settings.get().get_nnserver_batch_size_str());
+    let elasticsearch_batch_size_str =
+        create_signal(cx, settings.get().get_elasticsearch_batch_size_str());
 
     // Validation values for settings
     let elasticsearch_url_valid = create_memo(cx, || {
-        Settings::valid_elasticsearch_url(elasticsearch_url_str.get().as_str())
+        Settings::valid_elasticsearch_url(&elasticsearch_url_str.get())
     });
-    let tika_url_valid = create_memo(cx, || Settings::valid_tika_url(tika_url_str.get().as_str()));
-    let nnserver_url_valid = create_memo(cx, || {
-        Settings::valid_nnserver_url(nnserver_url_str.get().as_str())
-    });
+    let tika_url_valid = create_memo(cx, || Settings::valid_tika_url(&tika_url_str.get()));
+    let nnserver_url_valid =
+        create_memo(cx, || Settings::valid_nnserver_url(&nnserver_url_str.get()));
     let max_file_size_valid = create_memo(cx, || {
-        Settings::valid_max_file_size(max_file_size_str.get().as_str())
+        Settings::valid_max_file_size(&max_file_size_str.get())
+    });
+    let nnserver_batch_size_valid = create_memo(cx, || {
+        Settings::valid_nnserver_batch_size(&nnserver_batch_size_str.get())
+    });
+    let elasticsearch_batch_size_valid = create_memo(cx, || {
+        Settings::valid_elasticsearch_batch_size(&elasticsearch_batch_size_str.get())
     });
     let any_invalid = create_memo(cx, || {
         !*elasticsearch_url_valid.get()
             || !*tika_url_valid.get()
             || !*nnserver_url_valid.get()
             || !*max_file_size_valid.get()
+            || !*nnserver_batch_size_valid.get()
+            || !*elasticsearch_batch_size_valid.get()
     });
 
     // Set input values from settings when they are updated (on load from server or reset)
@@ -152,8 +183,11 @@ pub fn Settings<'a, G: Html>(
         elasticsearch_url_str.set(settings.get().get_elasticsearch_url_str());
         tika_url_str.set(settings.get().get_tika_url_str());
         nnserver_url_str.set(settings.get().get_nnserver_url_str());
+        open_on_start.set(settings.get().get_open_on_start());
         indexing_directories.set(settings.get().get_indexing_directories_dir_items());
         max_file_size_str.set(settings.get().get_max_file_size_str());
+        nnserver_batch_size_str.set(settings.get().get_nnserver_batch_size_str());
+        elasticsearch_batch_size_str.set(settings.get().get_elasticsearch_batch_size_str());
     });
     let reset_settings = |_| {
         settings.trigger_subscribers();
@@ -186,8 +220,11 @@ pub fn Settings<'a, G: Html>(
                 &elasticsearch_url_str.get(),
                 &tika_url_str.get(),
                 &nnserver_url_str.get(),
+                *open_on_start.get(),
                 &indexing_directories.get(),
                 &max_file_size_str.get(),
+                &nnserver_batch_size_str.get(),
+                &elasticsearch_batch_size_str.get(),
             );
 
             if let Err(e) = put_settings(&new_settings).await {
@@ -215,6 +252,8 @@ pub fn Settings<'a, G: Html>(
                             value=tika_url_str, valid=tika_url_valid)
                         TextSetting(id="nnserver_url", label="URL сервера нейронных сетей: ",
                             value=nnserver_url_str, valid=nnserver_url_valid)
+                        CheckboxSetting(id="open_on_start", label="Открывать интерфейс при запуске сервера: ",
+                            value=open_on_start)
                     }
 
                     fieldset {
@@ -227,6 +266,10 @@ pub fn Settings<'a, G: Html>(
                         legend { "Настройки индексации" }
                         NumberSetting(id="max_file_size", label="Максимальный размер файла (МиБ): ",
                             value=max_file_size_str, valid=max_file_size_valid)
+                        NumberSetting(id="nnserver_batch_size", label="Максимальное количество одновременно обрабатываемых документов: ",
+                            value=nnserver_batch_size_str, valid=nnserver_batch_size_valid)
+                        NumberSetting(id="elasticsearch_batch_size", label="Количество отправляемых в Elasticsearch изменений за раз: ",
+                            value=elasticsearch_batch_size_str, valid=elasticsearch_batch_size_valid)
                     }
 
                     div(class="settings_buttons") {
@@ -235,106 +278,6 @@ pub fn Settings<'a, G: Html>(
                     }
                 }
             }
-        }
-    }
-}
-
-#[derive(Prop)]
-struct TextSettingProps<'a> {
-    id: &'static str,
-    label: &'static str,
-    value: &'a Signal<String>,
-    valid: &'a ReadSignal<bool>,
-}
-
-#[component]
-fn TextSetting<'a, G: Html>(cx: Scope<'a>, props: TextSettingProps<'a>) -> View<G> {
-    let value = props.value;
-    view! { cx,
-        div(class="setting") {
-            label(for=props.id) { (props.label) }
-            input(type="text", id=props.id, name=props.id, bind:value=value) {}
-            (if *props.valid.get() { "✅" } else { "❌" })
-        }
-    }
-}
-
-#[derive(Prop)]
-struct NumberSettingProps<'a> {
-    id: &'static str,
-    label: &'static str,
-    value: &'a Signal<String>,
-    valid: &'a ReadSignal<bool>,
-}
-
-#[component]
-fn NumberSetting<'a, G: Html>(cx: Scope<'a>, props: NumberSettingProps<'a>) -> View<G> {
-    let value = props.value;
-    view! { cx,
-        div(class="setting") {
-            label(for=props.id) { (props.label) }
-            input(type="text", size=10, id=props.id, name=props.id, bind:value=value) {}
-            (if *props.valid.get() { "✅" } else { "❌" })
-        }
-    }
-}
-
-#[component(inline_props)]
-fn DirectoryList<'a, G: Html>(
-    cx: Scope<'a>,
-    directory_list: &'a Signal<Vec<DirectoryItem>>,
-    status_dialog_state: &'a Signal<StatusDialogState>,
-) -> View<G> {
-    let curr_directory = create_signal(cx, PathBuf::new());
-    let curr_directory_empty = create_memo(cx, || curr_directory.get().as_os_str().is_empty());
-
-    let select_item = move |_| {
-        spawn_local_scoped(cx, async {
-            match pick_folder().await {
-                Ok(res) => {
-                    if let Some(path) = res.path {
-                        curr_directory.set(path);
-                    }
-                }
-                Err(e) => {
-                    status_dialog_state.set(StatusDialogState::Error(format!(
-                        "❌ Ошибка открытия диалога: {:#?}",
-                        e
-                    )));
-                }
-            }
-        });
-    };
-
-    let add_item = |_| {
-        directory_list
-            .modify()
-            .push(DirectoryItem::new((*curr_directory.get()).clone()));
-        curr_directory.set(PathBuf::new());
-    };
-
-    view! { cx,
-        Keyed(
-            iterable=directory_list,
-            view=move |cx, item| {
-                let delete_item = move |_| {
-                    directory_list.modify().retain(|x| x.id != item.id);
-                };
-
-                view! { cx,
-                    div(class="setting") {
-                        input(type="text", readonly=true, value=item.path.display()) {}
-                        button(type="button", on:click=delete_item) { "➖" }
-                    }
-                }
-            },
-            key=|item| item.id,
-        )
-
-        div(class="setting") {
-            input(type="text", readonly=true, value=curr_directory.get().display()) {}
-            button(type="button", on:click=select_item) { "Выбрать..." }
-            button(type="button", on:click=add_item, disabled=*curr_directory_empty.get()) { "➕" }
         }
     }
 }

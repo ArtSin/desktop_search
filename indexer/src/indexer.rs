@@ -2,10 +2,14 @@ use std::{future::Future, sync::Arc};
 
 use axum::{extract::State, http::StatusCode};
 use common_lib::{
-    elasticsearch::{FileES, ELASTICSEARCH_BATCH_SIZE, ELASTICSEARCH_INDEX},
+    elasticsearch::{FileES, ELASTICSEARCH_INDEX},
     indexer::IndexingEvent,
 };
-use elasticsearch::{http::request::JsonBody, indices::IndicesCreateParts, Elasticsearch};
+use elasticsearch::{
+    http::request::JsonBody,
+    indices::{IndicesCreateParts, IndicesExistsParts, IndicesRefreshParts},
+    BulkParts, Elasticsearch,
+};
 use serde_json::{json, Value};
 use tokio::sync::{
     mpsc::{self, UnboundedReceiver, UnboundedSender},
@@ -26,9 +30,7 @@ pub async fn create_index(es_client: &Elasticsearch) -> Result<(), elasticsearch
     // Check if index exists
     if es_client
         .indices()
-        .exists(elasticsearch::indices::IndicesExistsParts::Index(&[
-            ELASTICSEARCH_INDEX,
-        ]))
+        .exists(IndicesExistsParts::Index(&[ELASTICSEARCH_INDEX]))
         .send()
         .await?
         .status_code()
@@ -135,9 +137,9 @@ async fn streaming_process<T, F, Fut>(
     F: Fn(Arc<ServerState>, T) -> Fut + Send + Sync + Copy + 'static,
     Fut: Future<Output = anyhow::Result<(Value, Value)>> + Send,
 {
-    const NNSERVER_BATCH_SIZE: usize = 32; // make into setting
-
-    let semaphore = Arc::new(Semaphore::new(NNSERVER_BATCH_SIZE));
+    let semaphore = Arc::new(Semaphore::new(
+        state.settings.read().await.other.nnserver_batch_size,
+    ));
     let mut futures = Vec::new();
     for file in files {
         let permit = Arc::clone(&semaphore).acquire_owned().await.unwrap();
@@ -203,7 +205,7 @@ async fn bulk_send(
         tracing::debug!("Bulk send {} lines", queue.len());
         let body = std::mem::take(queue);
         es_client
-            .bulk(elasticsearch::BulkParts::Index(ELASTICSEARCH_INDEX))
+            .bulk(BulkParts::Index(ELASTICSEARCH_INDEX))
             .body(body)
             .send()
             .await?;
@@ -212,6 +214,7 @@ async fn bulk_send(
 
     let mut queue = Vec::new();
     let mut cnt: usize = 0;
+    let batch_size = state.settings.read().await.other.elasticsearch_batch_size;
     while let Some((action, data)) = rx.recv().await {
         queue.push(JsonBody::new(action));
         if !data.is_null() {
@@ -219,7 +222,7 @@ async fn bulk_send(
         }
         cnt += 1;
 
-        if cnt >= ELASTICSEARCH_BATCH_SIZE {
+        if cnt >= batch_size {
             send_queue(&state.es_client, &mut queue).await?;
             on_event(Arc::clone(&state), IndexingEvent::FilesSent(cnt)).await;
             cnt = 0;
@@ -294,9 +297,7 @@ pub async fn index(State(state): State<Arc<ServerState>>) -> (StatusCode, String
         if let Err(e) = state
             .es_client
             .indices()
-            .refresh(elasticsearch::indices::IndicesRefreshParts::Index(&[
-                ELASTICSEARCH_INDEX,
-            ]))
+            .refresh(IndicesRefreshParts::Index(&[ELASTICSEARCH_INDEX]))
             .send()
             .await
         {
