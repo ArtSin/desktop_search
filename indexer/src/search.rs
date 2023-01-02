@@ -3,7 +3,7 @@ use std::{cmp::min, sync::Arc};
 use axum::{extract::State, http::StatusCode, Json};
 use common_lib::{
     elasticsearch::{FileES, ELASTICSEARCH_INDEX, ELASTICSEARCH_MAX_SIZE},
-    search::{ImageQuery, QueryType, SearchRequest, SearchResponse, TextQuery},
+    search::{ImageQuery, PageType, QueryType, SearchRequest, SearchResponse, TextQuery},
 };
 use elasticsearch::{Elasticsearch, SearchParts};
 use serde_json::{json, Value};
@@ -17,22 +17,10 @@ use crate::{
 use self::query::{range, simple_query_string};
 
 const RESULTS_PER_PAGE: u32 = 20;
+const ADJACENT_PAGES: u32 = 3;
 
-async fn get_request_body(
-    reqwest_client: &reqwest::Client,
-    nnserver_url: Url,
-    search_request: SearchRequest,
-) -> anyhow::Result<Value> {
-    const KNN_CANDIDATES_MULTIPLIER: u32 = 10;
-    const IMAGE_SEARCH_BOOST: f32 = 0.5;
-
-    let mut request_body = Value::Object(serde_json::Map::new());
-    let num_candidates = min(
-        RESULTS_PER_PAGE * KNN_CANDIDATES_MULTIPLIER,
-        ELASTICSEARCH_MAX_SIZE as u32,
-    );
-
-    let es_request_filter = [
+fn get_es_request_filter(search_request: &SearchRequest) -> Vec<Value> {
+    [
         (search_request.modified_from.is_some() || search_request.modified_to.is_some()).then(
             || {
                 range(
@@ -122,7 +110,55 @@ async fn get_request_body(
     ]
     .into_iter()
     .flatten()
-    .collect::<Vec<_>>();
+    .collect()
+}
+
+fn get_es_request_must(search_request: &SearchRequest) -> Vec<Value> {
+    let query_string = match search_request.query {
+        QueryType::Text(TextQuery { ref query, .. }) => {
+            let query_fields = [
+                search_request.path_enabled.then_some("path"),
+                search_request.hash_enabled.then_some("hash"),
+                search_request
+                    .document_data
+                    .title_enabled
+                    .then_some("title"),
+                search_request
+                    .document_data
+                    .creator_enabled
+                    .then_some("creator"),
+            ]
+            .into_iter()
+            .flatten()
+            .collect::<Vec<_>>();
+
+            if query_fields.is_empty() {
+                None
+            } else {
+                Some(simple_query_string(query.clone(), &query_fields))
+            }
+        }
+        _ => None,
+    };
+    [query_string].into_iter().flatten().collect()
+}
+
+async fn get_request_body(
+    reqwest_client: &reqwest::Client,
+    nnserver_url: Url,
+    search_request: &SearchRequest,
+) -> anyhow::Result<Value> {
+    const KNN_CANDIDATES_MULTIPLIER: u32 = 10;
+    const IMAGE_SEARCH_BOOST: f32 = 0.5;
+
+    let mut request_body = Value::Object(serde_json::Map::new());
+    let num_candidates = min(
+        RESULTS_PER_PAGE * KNN_CANDIDATES_MULTIPLIER,
+        ELASTICSEARCH_MAX_SIZE as u32,
+    );
+
+    let es_request_must = get_es_request_must(search_request);
+    let es_request_filter = get_es_request_filter(search_request);
 
     match search_request.query {
         QueryType::Text(TextQuery {
@@ -166,31 +202,6 @@ async fn get_request_body(
             );
         }
     }
-
-    let query_string = match search_request.query {
-        QueryType::Text(TextQuery { ref query, .. }) => {
-            let query_fields = [
-                search_request.path_enabled.then(|| "path"),
-                search_request.hash_enabled.then(|| "hash"),
-                search_request.document_data.title_enabled.then(|| "title"),
-                search_request
-                    .document_data
-                    .creator_enabled
-                    .then(|| "creator"),
-            ]
-            .into_iter()
-            .flatten()
-            .collect::<Vec<_>>();
-
-            if query_fields.is_empty() {
-                None
-            } else {
-                Some(simple_query_string(query.clone(), &query_fields))
-            }
-        }
-        _ => None,
-    };
-    let es_request_must = [query_string].into_iter().flatten().collect::<Vec<_>>();
 
     let query_boost = match search_request.query {
         QueryType::Text(TextQuery {
@@ -247,19 +258,53 @@ fn get_results(es_response_body: &Value) -> Vec<FileES> {
         .collect()
 }
 
+fn get_pages(es_response_body: &Value, page: u32) -> Vec<PageType> {
+    let total_pages = (es_response_body["hits"]["total"]["value"].as_u64().unwrap() as u32
+        + RESULTS_PER_PAGE
+        - 1)
+        / RESULTS_PER_PAGE;
+
+    let mut pages = Vec::new();
+    if page > 1 {
+        pages.push(PageType::First);
+    }
+    if page > 0 {
+        pages.push(PageType::Previous(page - 1));
+    }
+    pages.append(
+        &mut (page.saturating_sub(ADJACENT_PAGES)..min(page + ADJACENT_PAGES + 1, total_pages))
+            .map(|i| {
+                if i == page {
+                    PageType::Current(i)
+                } else {
+                    PageType::Other(i)
+                }
+            })
+            .collect(),
+    );
+    if page + 1 < total_pages {
+        pages.push(PageType::Next(page + 1));
+    }
+    if page + 2 < total_pages {
+        pages.push(PageType::Last(total_pages - 1));
+    }
+    pages
+}
+
 pub async fn search(
     State(state): State<Arc<ServerState>>,
     Json(search_request): Json<SearchRequest>,
 ) -> Result<Json<SearchResponse>, (StatusCode, String)> {
     let nnserver_url = state.settings.read().await.other.nnserver_url.clone();
-    let es_request_body = get_request_body(&state.reqwest_client, nnserver_url, search_request)
+    let es_request_body = get_request_body(&state.reqwest_client, nnserver_url, &search_request)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
-    let es_response_body = get_es_response(&state.es_client, 0, es_request_body)
+    let es_response_body = get_es_response(&state.es_client, search_request.page, es_request_body)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
     let results = get_results(&es_response_body);
-    Ok(Json(SearchResponse { results }))
+    let pages = get_pages(&es_response_body, search_request.page);
+    Ok(Json(SearchResponse { results, pages }))
 }
 
 mod query {

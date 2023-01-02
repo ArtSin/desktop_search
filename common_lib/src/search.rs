@@ -9,6 +9,7 @@ use crate::elasticsearch::FileES;
 #[skip_serializing_none]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SearchRequest {
+    pub page: u32,
     pub query: QueryType,
     pub path_enabled: bool,
     pub hash_enabled: bool,
@@ -66,7 +67,18 @@ pub struct DocumentSearchRequest {
     pub num_characters_to: Option<u32>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum PageType {
+    First,
+    Previous(u32),
+    Next(u32),
+    Last(u32),
+    Current(u32),
+    Other(u32),
+}
+
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct SearchResponse {
     pub results: Vec<FileES>,
+    pub pages: Vec<PageType>,
 }

@@ -3,13 +3,14 @@ use std::path::{Path, PathBuf};
 use common_lib::{
     actions::PickFileResult,
     search::{
-        DocumentSearchRequest, ImageQuery, ImageSearchRequest, SearchRequest, SearchResponse,
-        TextQuery,
+        DocumentSearchRequest, ImageQuery, ImageSearchRequest, PageType, SearchRequest,
+        SearchResponse, TextQuery,
     },
 };
 use sycamore::{futures::spawn_local_scoped, prelude::*};
 use url::Url;
 use wasm_bindgen::JsValue;
+use web_sys::window;
 
 use crate::{
     app::{fetch, widgets::StatusDialogState},
@@ -118,6 +119,7 @@ pub fn Search<'a, G: Html>(
     let preview_data = create_signal(cx, PreviewData::default());
 
     let search_results = create_signal(cx, Vec::new());
+    let pages = create_signal(cx, Vec::new());
 
     let toggle_filters = move |_| {
         display_filters.set(!*display_filters.get());
@@ -147,7 +149,7 @@ pub fn Search<'a, G: Html>(
         });
     };
 
-    let search = move |_| {
+    let search = move |page: u32| {
         spawn_local_scoped(cx, async move {
             status_dialog_state.set(StatusDialogState::Loading);
 
@@ -161,6 +163,7 @@ pub fn Search<'a, G: Html>(
                 }),
             };
             let search_request = SearchRequest {
+                page,
                 query: search_query,
                 path_enabled: *path_enabled.get(),
                 hash_enabled: *hash_enabled.get(),
@@ -193,7 +196,9 @@ pub fn Search<'a, G: Html>(
             match search(&search_request).await {
                 Ok(x) => {
                     search_results.set(x.results);
+                    pages.set(x.pages);
                     status_dialog_state.set(StatusDialogState::None);
+                    window().unwrap().scroll_to_with_x_and_y(0.0, 0.0);
                 }
                 Err(e) => {
                     search_results.set(Vec::new());
@@ -205,6 +210,7 @@ pub fn Search<'a, G: Html>(
             }
         })
     };
+    let search_without_page = move |_| search(0);
 
     view! { cx,
         header {
@@ -242,7 +248,7 @@ pub fn Search<'a, G: Html>(
         }
         div(class="main_container") {
             aside(style={if *display_filters.get() { "display: block;" } else { "display: none;" }}) {
-                form(id="search", on:submit=search, action="javascript:void(0);") {
+                form(id="search", on:submit=search_without_page, action="javascript:void(0);") {
                     fieldset {
                         legend { "Тип запроса" }
                         RadioFilter(text="По тексту", name="query_type", id="query_type_text",
@@ -327,6 +333,43 @@ pub fn Search<'a, G: Html>(
             main {
                 SearchResults(search_results=search_results, display_preview=display_preview,
                     preview_data=preview_data, status_dialog_state=status_dialog_state)
+
+                div(id="pagination") {
+                    Keyed(
+                        iterable=pages,
+                        key=|x| *x,
+                        view=move |cx, x| {
+                            let text = match x {
+                                PageType::First => "<< Первая".to_owned(),
+                                PageType::Previous(_) => "< Предыдущая".to_owned(),
+                                PageType::Next(_) => "Следующая >".to_owned(),
+                                PageType::Last(_) => "Последняя >>".to_owned(),
+                                PageType::Current(p) | PageType::Other(p) => (p + 1).to_string(),
+                            };
+
+                            let switch_page = move |_| {
+                                let page = match x {
+                                    PageType::First => 0,
+                                    PageType::Previous(p) | PageType::Next(p) | PageType::Last(p)
+                                        | PageType::Current(p) | PageType::Other(p) => p,
+                                };
+                                search(page);
+                            };
+
+                            match x {
+                                PageType::Current(_) => {
+                                    view! { cx, (text) " " }
+                                }
+                                _ => {
+                                    view! { cx,
+                                        a(on:click=switch_page, href="javascript:void(0);") { (text) }
+                                        " "
+                                    }
+                                }
+                            }
+                        }
+                    )
+                }
             }
 
             (if *display_preview.get() {
