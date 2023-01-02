@@ -10,6 +10,8 @@ use crate::elasticsearch::FileES;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SearchRequest {
     pub query: QueryType,
+    pub path_enabled: bool,
+    pub hash_enabled: bool,
     pub modified_from: Option<DateTime<Utc>>,
     pub modified_to: Option<DateTime<Utc>>,
     pub size_from: Option<u64>,
@@ -50,10 +52,18 @@ pub struct ImageSearchRequest {
 #[skip_serializing_none]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DocumentSearchRequest {
+    pub title_enabled: bool,
+    pub creator_enabled: bool,
     pub doc_created_from: Option<DateTime<Utc>>,
     pub doc_created_to: Option<DateTime<Utc>>,
     pub doc_modified_from: Option<DateTime<Utc>>,
     pub doc_modified_to: Option<DateTime<Utc>>,
+    pub num_pages_from: Option<u32>,
+    pub num_pages_to: Option<u32>,
+    pub num_words_from: Option<u32>,
+    pub num_words_to: Option<u32>,
+    pub num_characters_from: Option<u32>,
+    pub num_characters_to: Option<u32>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]

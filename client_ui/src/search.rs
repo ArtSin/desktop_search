@@ -1,13 +1,7 @@
-use std::{
-    fmt::Display,
-    path::{Path, PathBuf},
-    str::FromStr,
-};
+use std::path::{Path, PathBuf};
 
-use chrono::{DateTime, Local, TimeZone, Utc};
 use common_lib::{
-    actions::{OpenPathArgs, PickFileResult},
-    elasticsearch::{FileES, FileMetadata},
+    actions::PickFileResult,
     search::{
         DocumentSearchRequest, ImageQuery, ImageSearchRequest, SearchRequest, SearchResponse,
         TextQuery,
@@ -18,9 +12,16 @@ use url::Url;
 use wasm_bindgen::JsValue;
 
 use crate::{
-    app::{fetch, fetch_empty, widgets::StatusDialogState},
+    app::{fetch, widgets::StatusDialogState},
+    search::{
+        filters::{CheckboxFilter, DateTimeFilter, NumberFilter, RadioFilter},
+        results::SearchResults,
+    },
     settings::{MAX_FILE_SIZE_MAX, MAX_FILE_SIZE_MIN},
 };
+
+mod filters;
+mod results;
 
 #[derive(Debug, Clone, Copy)]
 enum QueryType {
@@ -52,10 +53,6 @@ async fn search(search_request: &SearchRequest) -> Result<SearchResponse, JsValu
     fetch("/search", "POST", Some(search_request)).await
 }
 
-async fn open_path(args: &OpenPathArgs) -> Result<(), JsValue> {
-    fetch_empty("/open_path", "POST", Some(args)).await
-}
-
 #[component(inline_props)]
 pub fn Search<'a, G: Html>(
     cx: Scope<'a>,
@@ -71,6 +68,8 @@ pub fn Search<'a, G: Html>(
     let image_search_enabled = create_signal(cx, true);
 
     let display_filters = create_signal(cx, true);
+    let path_enabled = create_signal(cx, true);
+    let hash_enabled = create_signal(cx, true);
     let modified_from = create_signal(cx, None);
     let modified_to = create_signal(cx, None);
     let modified_valid = create_signal(cx, true);
@@ -85,12 +84,23 @@ pub fn Search<'a, G: Html>(
     let height_to = create_signal(cx, None);
     let height_valid = create_signal(cx, true);
 
+    let title_enabled = create_signal(cx, true);
+    let creator_enabled = create_signal(cx, true);
     let doc_created_from = create_signal(cx, None);
     let doc_created_to = create_signal(cx, None);
     let doc_created_valid = create_signal(cx, true);
     let doc_modified_from = create_signal(cx, None);
     let doc_modified_to = create_signal(cx, None);
     let doc_modified_valid = create_signal(cx, true);
+    let num_pages_from = create_signal(cx, None);
+    let num_pages_to = create_signal(cx, None);
+    let num_pages_valid = create_signal(cx, true);
+    let num_words_from = create_signal(cx, None);
+    let num_words_to = create_signal(cx, None);
+    let num_words_valid = create_signal(cx, true);
+    let num_characters_from = create_signal(cx, None);
+    let num_characters_to = create_signal(cx, None);
+    let num_characters_valid = create_signal(cx, true);
 
     let any_invalid = create_memo(cx, || {
         !*modified_valid.get()
@@ -99,6 +109,9 @@ pub fn Search<'a, G: Html>(
             || !*height_valid.get()
             || !*doc_created_valid.get()
             || !*doc_modified_valid.get()
+            || !*num_pages_valid.get()
+            || !*num_words_valid.get()
+            || !*num_characters_valid.get()
     });
 
     let display_preview = create_signal(cx, false);
@@ -149,6 +162,8 @@ pub fn Search<'a, G: Html>(
             };
             let search_request = SearchRequest {
                 query: search_query,
+                path_enabled: *path_enabled.get(),
+                hash_enabled: *hash_enabled.get(),
                 modified_from: *modified_from.get(),
                 modified_to: *modified_to.get(),
                 size_from: size_from.get().map(|x| (x * 1024.0 * 1024.0) as u64),
@@ -160,10 +175,18 @@ pub fn Search<'a, G: Html>(
                     height_to: *height_to.get(),
                 },
                 document_data: DocumentSearchRequest {
+                    title_enabled: *title_enabled.get(),
+                    creator_enabled: *creator_enabled.get(),
                     doc_created_from: *doc_created_from.get(),
                     doc_created_to: *doc_created_to.get(),
                     doc_modified_from: *doc_modified_from.get(),
                     doc_modified_to: *doc_modified_to.get(),
+                    num_pages_from: *num_pages_from.get(),
+                    num_pages_to: *num_pages_to.get(),
+                    num_words_from: *num_words_from.get(),
+                    num_words_to: *num_words_to.get(),
+                    num_characters_from: *num_characters_from.get(),
+                    num_characters_to: *num_characters_to.get(),
                 },
             };
 
@@ -245,6 +268,12 @@ pub fn Search<'a, G: Html>(
                     details {
                         summary { "Основные свойства файла" }
 
+                        fieldset {
+                            legend { "Текстовый поиск" }
+                            CheckboxFilter(text="Путь файла", id="path", value_enabled=path_enabled)
+                            CheckboxFilter(text="Хеш", id="hash", value_enabled=hash_enabled)
+                        }
+
                         DateTimeFilter(legend="Дата и время изменения", id="modified",
                             value_from=modified_from, value_to=modified_to, valid=modified_valid)
 
@@ -268,11 +297,29 @@ pub fn Search<'a, G: Html>(
                     details {
                         summary { "Свойства документа" }
 
+                        fieldset {
+                            legend { "Текстовый поиск" }
+                            CheckboxFilter(text="Заголовок", id="title", value_enabled=title_enabled)
+                            CheckboxFilter(text="Создатель", id="creator", value_enabled=creator_enabled)
+                        }
+
                         DateTimeFilter(legend="Дата и время создания", id="doc_created",
                             value_from=doc_created_from, value_to=doc_created_to, valid=doc_created_valid)
 
                         DateTimeFilter(legend="Дата и время изменения", id="doc_modified",
                             value_from=doc_modified_from, value_to=doc_modified_to, valid=doc_modified_valid)
+
+                        NumberFilter(legend="Количество страниц", id="num_pages",
+                            min=1, max=u32::MAX, value_from=num_pages_from, value_to=num_pages_to,
+                            valid=num_pages_valid)
+
+                        NumberFilter(legend="Количество слов", id="num_words",
+                            min=1, max=u32::MAX, value_from=num_words_from, value_to=num_words_to,
+                            valid=num_words_valid)
+
+                        NumberFilter(legend="Количество символов", id="num_characters",
+                            min=1, max=u32::MAX, value_from=num_characters_from, value_to=num_characters_to,
+                            valid=num_characters_valid)
                     }
                 }
             }
@@ -333,401 +380,5 @@ pub fn Search<'a, G: Html>(
                 view! { cx, }
             })
         }
-    }
-}
-
-#[derive(Prop)]
-struct RadioFilterProps<'a, T: Copy> {
-    text: &'static str,
-    name: &'static str,
-    id: &'static str,
-    value_signal: &'a Signal<T>,
-    value: T,
-    default: bool,
-}
-
-#[component]
-fn RadioFilter<'a, T: Copy, G: Html>(cx: Scope<'a>, props: RadioFilterProps<'a, T>) -> View<G> {
-    let update = move |_| {
-        props.value_signal.set(props.value);
-    };
-    view! { cx,
-        div(class="radio_checkbox_field") {
-            input(type="radio", id=props.id, name=props.name, value=props.id,
-                on:change=update, checked=props.default) {}
-            label(for=props.id) { (props.text) }
-        }
-    }
-}
-
-#[derive(Prop)]
-struct CheckboxFilterProps<'a> {
-    text: &'static str,
-    id: &'static str,
-    value_enabled: &'a Signal<bool>,
-}
-
-#[component]
-fn CheckboxFilter<'a, G: Html>(cx: Scope<'a>, props: CheckboxFilterProps<'a>) -> View<G> {
-    view! { cx,
-        div(class="radio_checkbox_field") {
-            input(type="checkbox", id=props.id, name=props.id, bind:checked=props.value_enabled) {}
-            label(for=props.id) { (props.text) }
-        }
-    }
-}
-
-#[derive(Prop)]
-struct DateTimeFilterProps<'a> {
-    legend: &'static str,
-    id: &'static str,
-    value_from: &'a Signal<Option<DateTime<Utc>>>,
-    value_to: &'a Signal<Option<DateTime<Utc>>>,
-    valid: &'a Signal<bool>,
-}
-
-#[component]
-fn DateTimeFilter<'a, G: Html>(cx: Scope<'a>, props: DateTimeFilterProps<'a>) -> View<G> {
-    const FORMAT_STR: &str = "%FT%R";
-
-    let curr_datetime_str = format!("{}", Local::now().format(FORMAT_STR));
-    let value_from = create_signal(cx, curr_datetime_str.clone());
-    let value_to = create_signal(cx, curr_datetime_str);
-
-    let enabled_from = create_signal(cx, false);
-    let enabled_to = create_signal(cx, false);
-
-    let valid_from = create_signal(cx, true);
-    let valid_to = create_signal(cx, true);
-
-    let parse = |enabled: bool, value: &str| {
-        if !enabled {
-            Ok(None)
-        } else {
-            Local
-                .datetime_from_str(value, FORMAT_STR)
-                .map(|x| Some(DateTime::from(x)))
-        }
-    };
-
-    let update = move |enabled: &Signal<bool>,
-                       value_str: &Signal<String>,
-                       valid: &Signal<bool>,
-                       value_datetime: &Signal<Option<DateTime<Utc>>>| {
-        match parse(*enabled.get(), &value_str.get()) {
-            Ok(x) => {
-                valid.set(true);
-                value_datetime.set(x);
-            }
-            Err(_) => {
-                valid.set(false);
-            }
-        }
-    };
-    create_effect(cx, move || {
-        update(enabled_from, value_from, valid_from, props.value_from);
-        update(enabled_to, value_to, valid_to, props.value_to);
-    });
-    create_effect(cx, || props.valid.set(*valid_from.get() && *valid_to.get()));
-
-    view! { cx,
-        fieldset {
-            legend { (props.legend) }
-            div(class="filter_field") {
-                input(type="checkbox", id=(props.id.to_owned() + "_from"),
-                    name=(props.id.to_owned() + "_from"), bind:checked=enabled_from) {}
-                label(for=(props.id.to_owned() + "_from")) { "От: " }
-                input(type="datetime-local", disabled=!*enabled_from.get(), bind:value=value_from) {}
-                (if *valid_from.get() { "✅" } else { "❌" })
-            }
-            div(class="filter_field") {
-                input(type="checkbox", id=(props.id.to_owned() + "_to"),
-                    name=(props.id.to_owned() + "_to"), bind:checked=enabled_to) {}
-                label(for=(props.id.to_owned() + "_to")) { "До: " }
-                input(type="datetime-local", disabled=!*enabled_to.get(), bind:value=value_to) {}
-                (if *valid_to.get() { "✅" } else { "❌" })
-            }
-        }
-    }
-}
-
-#[derive(Prop)]
-struct NumberFilterProps<'a, T> {
-    legend: &'static str,
-    id: &'static str,
-    min: T,
-    max: T,
-    value_from: &'a Signal<Option<T>>,
-    value_to: &'a Signal<Option<T>>,
-    valid: &'a Signal<bool>,
-}
-
-#[component]
-fn NumberFilter<'a, T, G>(cx: Scope<'a>, props: NumberFilterProps<'a, T>) -> View<G>
-where
-    T: Copy + FromStr + Display + PartialOrd,
-    <T as FromStr>::Err: Display,
-    G: Html,
-{
-    let value_from = create_signal(cx, props.min.to_string());
-    let value_to = create_signal(cx, props.max.to_string());
-
-    let enabled_from = create_signal(cx, false);
-    let enabled_to = create_signal(cx, false);
-
-    let valid_from = create_signal(cx, true);
-    let valid_to = create_signal(cx, true);
-
-    let parse = move |enabled: bool, value: &str| {
-        if !enabled {
-            Ok(None)
-        } else {
-            value.parse::<T>().map_err(|e| e.to_string()).and_then(|x| {
-                if (props.min..=props.max).contains(&x) {
-                    Ok(Some(x))
-                } else {
-                    Err("Out of bounds".to_owned())
-                }
-            })
-        }
-    };
-    let update = move |enabled: &Signal<bool>,
-                       value_str: &Signal<String>,
-                       valid: &Signal<bool>,
-                       value_num: &Signal<Option<T>>| {
-        match parse(*enabled.get(), &value_str.get()) {
-            Ok(x) => {
-                valid.set(true);
-                value_num.set(x);
-            }
-            Err(_) => {
-                valid.set(false);
-            }
-        }
-    };
-    create_effect(cx, move || {
-        update(enabled_from, value_from, valid_from, props.value_from);
-        update(enabled_to, value_to, valid_to, props.value_to);
-    });
-    create_effect(cx, || props.valid.set(*valid_from.get() && *valid_to.get()));
-
-    view! { cx,
-        fieldset {
-            legend { (props.legend) }
-            div(class="filter_field") {
-                input(type="checkbox", id=(props.id.to_owned() + "_from"),
-                    name=(props.id.to_owned() + "_from"), bind:checked=enabled_from) {}
-                label(for=(props.id.to_owned() + "_from")) { "От: " }
-                input(type="text", size=10, disabled=!*enabled_from.get(), bind:value=value_from) {}
-                (if *valid_from.get() { "✅" } else { "❌" })
-            }
-            div(class="filter_field") {
-                input(type="checkbox", id=(props.id.to_owned() + "_to"),
-                    name=(props.id.to_owned() + "_to"), bind:checked=enabled_to) {}
-                label(for=(props.id.to_owned() + "_to")) { "До: " }
-                input(type="text", size=10, disabled=!*enabled_to.get(), bind:value=value_to) {}
-                (if *valid_to.get() { "✅" } else { "❌" })
-            }
-        }
-    }
-}
-
-#[component(inline_props)]
-fn SearchResults<'a, G: Html>(
-    cx: Scope<'a>,
-    search_results: &'a ReadSignal<Vec<FileES>>,
-    display_preview: &'a Signal<bool>,
-    preview_data: &'a Signal<PreviewData>,
-    status_dialog_state: &'a Signal<StatusDialogState>,
-) -> View<G> {
-    view! { cx,
-        Keyed(
-            iterable=search_results,
-            key=|item| item._id.clone().unwrap(),
-            view=move |cx, item| {
-                let file_name = item.path.file_name().unwrap().to_string_lossy().into_owned();
-                let path = item.path.to_string_lossy().into_owned();
-                let path_ = item.path.clone();
-                let path__ = item.path.clone();
-                let path___ = item.path.clone();
-                let content_type = item.content_type.clone();
-
-                let show_preview = move |_| {
-                    preview_data.set(PreviewData {
-                        path: item.path.clone(),
-                        content_type: content_type.clone()
-                    });
-                    display_preview.set(true);
-                };
-                let open_path = move |path| {
-                    spawn_local_scoped(cx, async move {
-                        status_dialog_state.set(StatusDialogState::Loading);
-
-                        if let Err(e) = open_path(&OpenPathArgs { path }).await {
-                            status_dialog_state.set(StatusDialogState::Error(format!(
-                                "❌ Ошибка открытия: {:#?}",
-                                e
-                            )));
-                            return;
-                        }
-                        status_dialog_state.set(StatusDialogState::None);
-                    })
-                };
-                let open_file = move |_| {
-                    let path = path__.clone();
-                    open_path(path)
-                };
-                let open_folder = move |_| {
-                    let path = path___.parent().unwrap().to_path_buf();
-                    open_path(path)
-                };
-
-                view! { cx,
-                    article(class="search_result") {
-                        (if item.content_type.starts_with("image")
-                                || item.content_type.starts_with("video")
-                                || item.content_type.starts_with("audio") {
-                            let img_url = get_local_file_url(&path_, true);
-                            view! { cx,
-                                img(src=(img_url), onerror="this.style.display='none'") {}
-                            }
-                        } else {
-                            view! { cx, }
-                        })
-
-                        h3 {
-                            (file_name)
-                        }
-                        p(style="overflow-wrap: anywhere;") {
-                            "Полный путь: " (path)
-                        }
-                        div {
-                            button(form="search", type="button", on:click=show_preview) { "Показать" }
-                            button(form="search", type="button", on:click=open_file) { "Открыть" }
-                            button(form="search", type="button", on:click=open_folder) { "Открыть папку" }
-                        }
-
-                        details {
-                            summary { "Основные свойства файла" }
-
-                            p {
-                                "Изменено: " (item.modified.with_timezone(&Local))
-                            }
-                            p {
-                                "Размер (МиБ): "
-                                (format!("{:.4}", (item.size as f64) / 1024.0 / 1024.0))
-                            }
-                            p(style="overflow-wrap: anywhere;") {
-                                "Хеш SHA-256: " (item.hash)
-                            }
-                        }
-
-                        (if item.image_data.any_metadata() {
-                            view! { cx,
-                                details {
-                                    summary { "Свойства изображения" }
-
-                                    (if let Some(width) = item.image_data.width {
-                                        view! { cx,
-                                            p {
-                                                "Ширина (пиксели): " (width)
-                                            }
-                                        }
-                                    } else {
-                                        view! { cx, }
-                                    })
-                                    (if let Some(height) = item.image_data.height {
-                                        view! { cx,
-                                            p {
-                                                "Высота (пиксели): " (height)
-                                            }
-                                        }
-                                    } else {
-                                        view! { cx, }
-                                    })
-                                }
-                            }
-                        } else {
-                            view! { cx, }
-                        })
-
-                        (if item.document_data.any_metadata() {
-                            let document_data = item.document_data.clone();
-                            view! { cx,
-                                details {
-                                    summary { "Свойства документа" }
-
-                                    (if let Some(title) = document_data.title.clone() {
-                                        view! { cx,
-                                            p {
-                                                "Заголовок: " (title)
-                                            }
-                                        }
-                                    } else {
-                                        view! { cx, }
-                                    })
-                                    (if let Some(creator) = document_data.creator.clone() {
-                                        view! { cx,
-                                            p {
-                                                "Создатель: " (creator)
-                                            }
-                                        }
-                                    } else {
-                                        view! { cx, }
-                                    })
-                                    (if let Some(doc_created) = document_data.doc_created {
-                                        view! { cx,
-                                            p {
-                                                "Создано: " (doc_created.with_timezone(&Local))
-                                            }
-                                        }
-                                    } else {
-                                        view! { cx, }
-                                    })
-                                    (if let Some(doc_modified) = document_data.doc_modified {
-                                        view! { cx,
-                                            p {
-                                                "Изменено: " (doc_modified.with_timezone(&Local))
-                                            }
-                                        }
-                                    } else {
-                                        view! { cx, }
-                                    })
-                                    (if let Some(num_pages) = document_data.num_pages {
-                                        view! { cx,
-                                            p {
-                                                "Страниц: " (num_pages)
-                                            }
-                                        }
-                                    } else {
-                                        view! { cx, }
-                                    })
-                                    (if let Some(num_words) = document_data.num_words {
-                                        view! { cx,
-                                            p {
-                                                "Слов: " (num_words)
-                                            }
-                                        }
-                                    } else {
-                                        view! { cx, }
-                                    })
-                                    (if let Some(num_characters) = document_data.num_characters {
-                                        view! { cx,
-                                            p {
-                                                "Символов: " (num_characters)
-                                            }
-                                        }
-                                    } else {
-                                        view! { cx, }
-                                    })
-                                }
-                            }
-                        } else {
-                            view! { cx, }
-                        })
-                    }
-                }
-            }
-        )
     }
 }

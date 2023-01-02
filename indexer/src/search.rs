@@ -32,56 +32,7 @@ async fn get_request_body(
         ELASTICSEARCH_MAX_SIZE as u32,
     );
 
-    match search_request.query {
-        QueryType::Text(TextQuery {
-            ref query,
-            image_search_enabled,
-        }) => {
-            if image_search_enabled {
-                let image_search_text_embedding =
-                    get_image_search_text_embedding(reqwest_client, nnserver_url, query.clone())
-                        .await?;
-
-                request_body.as_object_mut().unwrap().insert(
-                    "knn".to_owned(),
-                    json!({
-                        "field": "image_embedding",
-                        "query_vector": image_search_text_embedding.embedding,
-                        "k": RESULTS_PER_PAGE,
-                        "num_candidates": num_candidates,
-                        "boost": IMAGE_SEARCH_BOOST
-                    }),
-                );
-            }
-        }
-        QueryType::Image(ImageQuery { ref image_path }) => {
-            let image_search_image_embedding =
-                get_image_search_image_embedding(reqwest_client, nnserver_url, image_path).await?;
-            let embedding = image_search_image_embedding
-                .embedding
-                .ok_or_else(|| anyhow::anyhow!("Incorrect image"))?;
-
-            request_body.as_object_mut().unwrap().insert(
-                "knn".to_owned(),
-                json!({
-                    "field": "image_embedding",
-                    "query_vector": embedding,
-                    "k": RESULTS_PER_PAGE,
-                    "num_candidates": num_candidates,
-                    "boost": IMAGE_SEARCH_BOOST
-                }),
-            );
-        }
-    }
-
-    let query_string = match search_request.query {
-        QueryType::Text(TextQuery { ref query, .. }) => {
-            Some(simple_query_string(query.clone(), &["path", "hash"]))
-        }
-        _ => None,
-    };
-    let es_request_must = [
-        query_string,
+    let es_request_filter = [
         (search_request.modified_from.is_some() || search_request.modified_to.is_some()).then(
             || {
                 range(
@@ -141,10 +92,105 @@ async fn get_request_body(
                     .map(|d| d.timestamp()),
             )
         }),
+        (search_request.document_data.num_pages_from.is_some()
+            || search_request.document_data.num_pages_to.is_some())
+        .then(|| {
+            range(
+                "num_pages",
+                search_request.document_data.num_pages_from,
+                search_request.document_data.num_pages_to,
+            )
+        }),
+        (search_request.document_data.num_words_from.is_some()
+            || search_request.document_data.num_words_to.is_some())
+        .then(|| {
+            range(
+                "num_words",
+                search_request.document_data.num_words_from,
+                search_request.document_data.num_words_to,
+            )
+        }),
+        (search_request.document_data.num_characters_from.is_some()
+            || search_request.document_data.num_characters_to.is_some())
+        .then(|| {
+            range(
+                "num_characters",
+                search_request.document_data.num_characters_from,
+                search_request.document_data.num_characters_to,
+            )
+        }),
     ]
     .into_iter()
     .flatten()
     .collect::<Vec<_>>();
+
+    match search_request.query {
+        QueryType::Text(TextQuery {
+            ref query,
+            image_search_enabled,
+        }) => {
+            if image_search_enabled {
+                let image_search_text_embedding =
+                    get_image_search_text_embedding(reqwest_client, nnserver_url, query.clone())
+                        .await?;
+
+                request_body.as_object_mut().unwrap().insert(
+                    "knn".to_owned(),
+                    json!({
+                        "field": "image_embedding",
+                        "query_vector": image_search_text_embedding.embedding,
+                        "k": RESULTS_PER_PAGE,
+                        "num_candidates": num_candidates,
+                        "filter": es_request_filter,
+                        "boost": IMAGE_SEARCH_BOOST
+                    }),
+                );
+            }
+        }
+        QueryType::Image(ImageQuery { ref image_path }) => {
+            let image_search_image_embedding =
+                get_image_search_image_embedding(reqwest_client, nnserver_url, image_path).await?;
+            let embedding = image_search_image_embedding
+                .embedding
+                .ok_or_else(|| anyhow::anyhow!("Incorrect image"))?;
+
+            request_body.as_object_mut().unwrap().insert(
+                "knn".to_owned(),
+                json!({
+                    "field": "image_embedding",
+                    "query_vector": embedding,
+                    "k": RESULTS_PER_PAGE,
+                    "num_candidates": num_candidates,
+                    "boost": IMAGE_SEARCH_BOOST
+                }),
+            );
+        }
+    }
+
+    let query_string = match search_request.query {
+        QueryType::Text(TextQuery { ref query, .. }) => {
+            let query_fields = [
+                search_request.path_enabled.then(|| "path"),
+                search_request.hash_enabled.then(|| "hash"),
+                search_request.document_data.title_enabled.then(|| "title"),
+                search_request
+                    .document_data
+                    .creator_enabled
+                    .then(|| "creator"),
+            ]
+            .into_iter()
+            .flatten()
+            .collect::<Vec<_>>();
+
+            if query_fields.is_empty() {
+                None
+            } else {
+                Some(simple_query_string(query.clone(), &query_fields))
+            }
+        }
+        _ => None,
+    };
+    let es_request_must = [query_string].into_iter().flatten().collect::<Vec<_>>();
 
     let query_boost = match search_request.query {
         QueryType::Text(TextQuery {
@@ -164,6 +210,7 @@ async fn get_request_body(
         json!({
             "bool": {
                 "must": es_request_must,
+                "filter": es_request_filter,
                 "boost": query_boost
             }
         }),
