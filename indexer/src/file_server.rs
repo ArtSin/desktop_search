@@ -35,6 +35,14 @@ pub async fn get_client_file(uri: Uri) -> Result<Response<BoxBody>, (StatusCode,
 
             Ok(Response::builder()
                 .header(axum::http::header::CONTENT_TYPE, mime.as_ref())
+                .header(
+                    axum::http::header::CACHE_CONTROL,
+                    if path == "index.html" {
+                        "no-cache"
+                    } else {
+                        "public, max-age=31536000, immutable"
+                    },
+                )
                 .body(body)
                 .unwrap())
         }
