@@ -23,6 +23,8 @@ once_cell.workspace = true
 async-trait.workspace = true
 mime_guess.workspace = true
 rust-embed.workspace = true
+uuid.workspace = true
+html-escape.workspace = true
 clap = { version = "4.0.32", features = ["derive"] }
 axum = { version = "0.6.1", features = ["ws"] }
 tower = { version = "0.4.13", features = ["timeout"] }

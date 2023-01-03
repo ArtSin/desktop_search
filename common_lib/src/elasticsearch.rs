@@ -40,13 +40,6 @@ pub struct FileES {
     pub document_data: DocumentData,
 }
 
-impl PartialEq for FileES {
-    fn eq(&self, other: &Self) -> bool {
-        self._id == other._id
-    }
-}
-impl Eq for FileES {}
-
 /// Fields for image files
 #[skip_serializing_none]
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]

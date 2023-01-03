@@ -3,6 +3,7 @@ use std::path::PathBuf;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use serde_with::skip_serializing_none;
+use uuid::Uuid;
 
 use crate::elasticsearch::FileES;
 
@@ -67,6 +68,37 @@ pub struct DocumentSearchRequest {
     pub num_characters_to: Option<u32>,
 }
 
+#[skip_serializing_none]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct HighlightedFields {
+    pub path: String,
+    pub hash: String,
+    /// Fields for document files
+    pub document_data: DocumentHighlightedFields,
+}
+
+/// Fields for document files
+#[skip_serializing_none]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DocumentHighlightedFields {
+    pub title: Option<String>,
+    pub creator: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SearchResult {
+    pub file: FileES,
+    pub highlights: HighlightedFields,
+    pub id: Uuid,
+}
+
+impl PartialEq for SearchResult {
+    fn eq(&self, other: &Self) -> bool {
+        self.id == other.id
+    }
+}
+impl Eq for SearchResult {}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum PageType {
     First,
@@ -79,6 +111,6 @@ pub enum PageType {
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct SearchResponse {
-    pub results: Vec<FileES>,
+    pub results: Vec<SearchResult>,
     pub pages: Vec<PageType>,
 }

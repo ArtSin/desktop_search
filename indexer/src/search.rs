@@ -3,11 +3,15 @@ use std::{cmp::min, sync::Arc};
 use axum::{extract::State, http::StatusCode, Json};
 use common_lib::{
     elasticsearch::{FileES, ELASTICSEARCH_INDEX, ELASTICSEARCH_MAX_SIZE},
-    search::{ImageQuery, PageType, QueryType, SearchRequest, SearchResponse, TextQuery},
+    search::{
+        DocumentHighlightedFields, HighlightedFields, ImageQuery, PageType, QueryType,
+        SearchRequest, SearchResponse, SearchResult, TextQuery,
+    },
 };
 use elasticsearch::{Elasticsearch, SearchParts};
 use serde_json::{json, Value};
 use url::Url;
+use uuid::Uuid;
 
 use crate::{
     embeddings::{get_image_search_image_embedding, get_image_search_text_embedding},
@@ -182,6 +186,45 @@ async fn get_request_body(
                     }),
                 );
             }
+
+            let query_boost = if image_search_enabled {
+                1.0 - IMAGE_SEARCH_BOOST
+            } else {
+                1.0
+            };
+
+            request_body.as_object_mut().unwrap().insert(
+                "query".to_owned(),
+                json!({
+                    "bool": {
+                        "must": es_request_must,
+                        "filter": es_request_filter,
+                        "boost": query_boost
+                    }
+                }),
+            );
+            request_body.as_object_mut().unwrap().insert(
+                "highlight".to_owned(),
+                json!({
+                    "pre_tags": ["<b>"],
+                    "post_tags": ["</b>"],
+                    "encoder": "html",
+                    "fields": {
+                        "path": {
+                            "number_of_fragments": 0
+                        },
+                        "hash": {
+                            "number_of_fragments": 0
+                        },
+                        "title": {
+                            "number_of_fragments": 0
+                        },
+                        "creator": {
+                            "number_of_fragments": 0
+                        }
+                    }
+                }),
+            );
         }
         QueryType::Image(ImageQuery { ref image_path }) => {
             let image_search_image_embedding =
@@ -197,35 +240,11 @@ async fn get_request_body(
                     "query_vector": embedding,
                     "k": RESULTS_PER_PAGE,
                     "num_candidates": num_candidates,
-                    "boost": IMAGE_SEARCH_BOOST
+                    "filter": es_request_filter
                 }),
             );
         }
     }
-
-    let query_boost = match search_request.query {
-        QueryType::Text(TextQuery {
-            image_search_enabled,
-            ..
-        }) => {
-            if image_search_enabled {
-                1.0 - IMAGE_SEARCH_BOOST
-            } else {
-                1.0
-            }
-        }
-        QueryType::Image(_) => 1.0,
-    };
-    request_body.as_object_mut().unwrap().insert(
-        "query".to_owned(),
-        json!({
-            "bool": {
-                "must": es_request_must,
-                "filter": es_request_filter,
-                "boost": query_boost
-            }
-        }),
-    );
     Ok(request_body)
 }
 
@@ -245,7 +264,22 @@ async fn get_es_response(
         .await
 }
 
-fn get_results(es_response_body: &Value) -> Vec<FileES> {
+fn get_highlighted_field(result_value: &Value, field: &str, field_value: &str) -> String {
+    result_value["highlight"][field].as_array().map_or_else(
+        || html_escape::encode_text(field_value).to_string(),
+        |s| s[0].as_str().unwrap_or_default().to_owned(),
+    )
+}
+
+fn get_highlighted_optional_field(
+    result_value: &Value,
+    field: &str,
+    field_value: Option<&str>,
+) -> Option<String> {
+    field_value.map(|field_val| get_highlighted_field(result_value, field, field_val))
+}
+
+fn get_results(es_response_body: &Value) -> Vec<SearchResult> {
     es_response_body["hits"]["hits"]
         .as_array()
         .unwrap()
@@ -253,7 +287,27 @@ fn get_results(es_response_body: &Value) -> Vec<FileES> {
         .map(|val| {
             let mut file_es: FileES = serde_json::from_value(val["_source"].clone()).unwrap();
             file_es._id = Some(val["_id"].as_str().unwrap().to_owned());
-            file_es
+            let highlights = HighlightedFields {
+                path: get_highlighted_field(val, "path", file_es.path.to_str().unwrap()),
+                hash: get_highlighted_field(val, "hash", &file_es.hash),
+                document_data: DocumentHighlightedFields {
+                    title: get_highlighted_optional_field(
+                        val,
+                        "title",
+                        file_es.document_data.title.as_deref(),
+                    ),
+                    creator: get_highlighted_optional_field(
+                        val,
+                        "creator",
+                        file_es.document_data.creator.as_deref(),
+                    ),
+                },
+            };
+            SearchResult {
+                file: file_es,
+                highlights,
+                id: Uuid::new_v4(),
+            }
         })
         .collect()
 }

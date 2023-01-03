@@ -21,3 +21,5 @@ async-trait = "0.1.60"
 mime_guess = "2.0.4"
 rust-embed = { version = "6.4.2", features = ["interpolate-folder-path"] }
 futures = "0.3.25"
+uuid = { version = "1.2.2", features = ["serde", "v4"] }
+html-escape = "0.2.13"

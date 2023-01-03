@@ -1,8 +1,5 @@
 use chrono::Local;
-use common_lib::{
-    actions::OpenPathArgs,
-    elasticsearch::{FileES, FileMetadata},
-};
+use common_lib::{actions::OpenPathArgs, elasticsearch::FileMetadata, search::SearchResult};
 use sycamore::{futures::spawn_local_scoped, prelude::*};
 use wasm_bindgen::JsValue;
 
@@ -17,7 +14,7 @@ async fn open_path(args: &OpenPathArgs) -> Result<(), JsValue> {
 #[component(inline_props)]
 pub(super) fn SearchResults<'a, G: Html>(
     cx: Scope<'a>,
-    search_results: &'a ReadSignal<Vec<FileES>>,
+    search_results: &'a ReadSignal<Vec<SearchResult>>,
     display_preview: &'a Signal<bool>,
     preview_data: &'a Signal<PreviewData>,
     status_dialog_state: &'a Signal<StatusDialogState>,
@@ -25,18 +22,21 @@ pub(super) fn SearchResults<'a, G: Html>(
     view! { cx,
         Keyed(
             iterable=search_results,
-            key=|item| item._id.clone().unwrap(),
+            key=|item| item.id,
             view=move |cx, item| {
-                let file_name = item.path.file_name().unwrap().to_string_lossy().into_owned();
-                let path = item.path.to_string_lossy().into_owned();
-                let path_ = item.path.clone();
-                let path__ = item.path.clone();
-                let path___ = item.path.clone();
-                let content_type = item.content_type.clone();
+                let file_name = item.file.path.file_name().unwrap().to_string_lossy().into_owned();
+                // let path = item.file.path.to_string_lossy().into_owned();
+                let path_ = item.file.path.clone();
+                let path__ = item.file.path.clone();
+                let path___ = item.file.path.clone();
+                let content_type = item.file.content_type.clone();
+
+                let highlighted_path = "Полный путь: ".to_owned() + &item.highlights.path;
+                let highlighted_hash = "Хеш SHA-256: ".to_owned() + &item.highlights.hash;
 
                 let show_preview = move |_| {
                     preview_data.set(PreviewData {
-                        path: item.path.clone(),
+                        path: item.file.path.clone(),
                         content_type: content_type.clone()
                     });
                     display_preview.set(true);
@@ -66,9 +66,9 @@ pub(super) fn SearchResults<'a, G: Html>(
 
                 view! { cx,
                     article(class="search_result") {
-                        (if item.content_type.starts_with("image")
-                                || item.content_type.starts_with("video")
-                                || item.content_type.starts_with("audio") {
+                        (if item.file.content_type.starts_with("image")
+                                || item.file.content_type.starts_with("video")
+                                || item.file.content_type.starts_with("audio") {
                             let img_url = get_local_file_url(&path_, true);
                             view! { cx,
                                 img(src=(img_url), onerror="this.style.display='none'") {}
@@ -80,9 +80,7 @@ pub(super) fn SearchResults<'a, G: Html>(
                         h3 {
                             (file_name)
                         }
-                        p(style="overflow-wrap: anywhere;") {
-                            "Полный путь: " (path)
-                        }
+                        p(style="overflow-wrap: anywhere;", dangerously_set_inner_html=&highlighted_path)
                         div {
                             button(form="search", type="button", on:click=show_preview) { "Показать" }
                             button(form="search", type="button", on:click=open_file) { "Открыть" }
@@ -93,23 +91,21 @@ pub(super) fn SearchResults<'a, G: Html>(
                             summary { "Основные свойства файла" }
 
                             p {
-                                "Изменено: " (item.modified.with_timezone(&Local))
+                                "Изменено: " (item.file.modified.with_timezone(&Local))
                             }
                             p {
                                 "Размер (МиБ): "
-                                (format!("{:.4}", (item.size as f64) / 1024.0 / 1024.0))
+                                (format!("{:.4}", (item.file.size as f64) / 1024.0 / 1024.0))
                             }
-                            p(style="overflow-wrap: anywhere;") {
-                                "Хеш SHA-256: " (item.hash)
-                            }
+                            p(style="overflow-wrap: anywhere;", dangerously_set_inner_html=&highlighted_hash)
                         }
 
-                        (if item.image_data.any_metadata() {
+                        (if item.file.image_data.any_metadata() {
                             view! { cx,
                                 details {
                                     summary { "Свойства изображения" }
 
-                                    (if let Some(width) = item.image_data.width {
+                                    (if let Some(width) = item.file.image_data.width {
                                         view! { cx,
                                             p {
                                                 "Ширина (пиксели): " (width)
@@ -118,7 +114,7 @@ pub(super) fn SearchResults<'a, G: Html>(
                                     } else {
                                         view! { cx, }
                                     })
-                                    (if let Some(height) = item.image_data.height {
+                                    (if let Some(height) = item.file.image_data.height {
                                         view! { cx,
                                             p {
                                                 "Высота (пиксели): " (height)
@@ -133,26 +129,27 @@ pub(super) fn SearchResults<'a, G: Html>(
                             view! { cx, }
                         })
 
-                        (if item.document_data.any_metadata() {
-                            let document_data = item.document_data.clone();
+                        (if item.file.document_data.any_metadata() {
+                            let document_data = item.file.document_data.clone();
+                            let highlighted_title = item.highlights.document_data.title.as_ref()
+                                .map(|x| "Заголовок: ".to_owned() + x);
+                            let highlighted_creator = item.highlights.document_data.creator.as_ref()
+                                .map(|x| "Создатель: ".to_owned() + x);
+
                             view! { cx,
                                 details {
                                     summary { "Свойства документа" }
 
-                                    (if let Some(title) = document_data.title.clone() {
+                                    (if let Some(title) = highlighted_title.clone() {
                                         view! { cx,
-                                            p {
-                                                "Заголовок: " (title)
-                                            }
+                                            p(dangerously_set_inner_html=&title)
                                         }
                                     } else {
                                         view! { cx, }
                                     })
-                                    (if let Some(creator) = document_data.creator.clone() {
+                                    (if let Some(creator) = highlighted_creator.clone() {
                                         view! { cx,
-                                            p {
-                                                "Создатель: " (creator)
-                                            }
+                                            p(dangerously_set_inner_html=&creator)
                                         }
                                     } else {
                                         view! { cx, }
