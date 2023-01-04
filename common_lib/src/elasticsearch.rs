@@ -32,6 +32,8 @@ pub struct FileES {
     pub hash: String,
     /// MIME content type
     pub content_type: String,
+    /// Text content
+    pub content: Option<String>,
     /// Fields for image files
     #[serde(flatten)]
     pub image_data: ImageData,

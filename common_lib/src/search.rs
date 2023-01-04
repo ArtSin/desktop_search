@@ -34,6 +34,7 @@ pub enum QueryType {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TextQuery {
     pub query: String,
+    pub content_enabled: bool,
     pub image_search_enabled: bool,
 }
 
@@ -73,6 +74,7 @@ pub struct DocumentSearchRequest {
 pub struct HighlightedFields {
     pub path: String,
     pub hash: String,
+    pub content: Option<String>,
     /// Fields for document files
     pub document_data: DocumentHighlightedFields,
 }

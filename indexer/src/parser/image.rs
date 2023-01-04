@@ -26,8 +26,8 @@ pub struct ImageMetadata {
 
 #[async_trait]
 impl Parser for ImageParser {
-    fn is_supported_content_type(&self, content_type: &str) -> bool {
-        content_type.starts_with("image")
+    fn is_supported_file(&self, metadata: &Metadata) -> bool {
+        metadata.content_type.starts_with("image")
     }
 
     async fn parse(

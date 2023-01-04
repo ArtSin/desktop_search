@@ -119,10 +119,15 @@ fn get_es_request_filter(search_request: &SearchRequest) -> Vec<Value> {
 
 fn get_es_request_must(search_request: &SearchRequest) -> Vec<Value> {
     let query_string = match search_request.query {
-        QueryType::Text(TextQuery { ref query, .. }) => {
+        QueryType::Text(TextQuery {
+            ref query,
+            content_enabled,
+            ..
+        }) => {
             let query_fields = [
                 search_request.path_enabled.then_some("path"),
                 search_request.hash_enabled.then_some("hash"),
+                content_enabled.then_some("content"),
                 search_request
                     .document_data
                     .title_enabled
@@ -168,6 +173,7 @@ async fn get_request_body(
         QueryType::Text(TextQuery {
             ref query,
             image_search_enabled,
+            ..
         }) => {
             if image_search_enabled {
                 let image_search_text_embedding =
@@ -215,6 +221,11 @@ async fn get_request_body(
                         },
                         "hash": {
                             "number_of_fragments": 0
+                        },
+                        "content": {
+                            "fragment_size": 300,
+                            "no_match_size": 300,
+                            "number_of_fragments": 1
                         },
                         "title": {
                             "number_of_fragments": 0
@@ -290,6 +301,7 @@ fn get_results(es_response_body: &Value) -> Vec<SearchResult> {
             let highlights = HighlightedFields {
                 path: get_highlighted_field(val, "path", file_es.path.to_str().unwrap()),
                 hash: get_highlighted_field(val, "hash", &file_es.hash),
+                content: get_highlighted_optional_field(val, "content", file_es.content.as_deref()),
                 document_data: DocumentHighlightedFields {
                     title: get_highlighted_optional_field(
                         val,

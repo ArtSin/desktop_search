@@ -25,10 +25,9 @@ pub(super) fn SearchResults<'a, G: Html>(
             key=|item| item.id,
             view=move |cx, item| {
                 let file_name = item.file.path.file_name().unwrap().to_string_lossy().into_owned();
-                // let path = item.file.path.to_string_lossy().into_owned();
+                let path = item.file.path.clone();
                 let path_ = item.file.path.clone();
                 let path__ = item.file.path.clone();
-                let path___ = item.file.path.clone();
                 let content_type = item.file.content_type.clone();
 
                 let highlighted_path = "Полный путь: ".to_owned() + &item.highlights.path;
@@ -56,11 +55,11 @@ pub(super) fn SearchResults<'a, G: Html>(
                     })
                 };
                 let open_file = move |_| {
-                    let path = path__.clone();
+                    let path = path_.clone();
                     open_path(path)
                 };
                 let open_folder = move |_| {
-                    let path = path___.parent().unwrap().to_path_buf();
+                    let path = path__.parent().unwrap().to_path_buf();
                     open_path(path)
                 };
 
@@ -69,7 +68,7 @@ pub(super) fn SearchResults<'a, G: Html>(
                         (if item.file.content_type.starts_with("image")
                                 || item.file.content_type.starts_with("video")
                                 || item.file.content_type.starts_with("audio") {
-                            let img_url = get_local_file_url(&path_, true);
+                            let img_url = get_local_file_url(&path, true);
                             view! { cx,
                                 img(src=(img_url), onerror="this.style.display='none'") {}
                             }
@@ -86,6 +85,13 @@ pub(super) fn SearchResults<'a, G: Html>(
                             button(form="search", type="button", on:click=open_file) { "Открыть" }
                             button(form="search", type="button", on:click=open_folder) { "Открыть папку" }
                         }
+                        (if let Some(content) = item.highlights.content.clone() {
+                            view! { cx,
+                                p(dangerously_set_inner_html=&content)
+                            }
+                        } else {
+                            view! { cx, }
+                        })
 
                         details {
                             summary { "Основные свойства файла" }

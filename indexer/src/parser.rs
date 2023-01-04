@@ -12,12 +12,13 @@ use crate::ServerState;
 use self::image::ImageMetadata;
 
 mod image;
+mod text;
 
-const PARSERS: [&(dyn Parser + Send + Sync); 1] = [&image::ImageParser];
+const PARSERS: [&(dyn Parser + Send + Sync); 2] = [&image::ImageParser, &text::TextParser];
 
 #[async_trait]
 pub trait Parser {
-    fn is_supported_content_type(&self, content_type: &str) -> bool;
+    fn is_supported_file(&self, metadata: &Metadata) -> bool;
     async fn parse(
         &self,
         state: Arc<ServerState>,
@@ -29,7 +30,9 @@ pub trait Parser {
 #[derive(Default, Deserialize)]
 pub struct Metadata {
     #[serde(rename = "Content-Type")]
-    content_type: String,
+    pub content_type: String,
+    #[serde(rename = "X-TIKA:content")]
+    pub content: Option<String>,
     /// Fields for image files
     #[serde(flatten)]
     pub image_data: ImageMetadata,
@@ -74,10 +77,11 @@ async fn get_metadata(state: Arc<ServerState>, file: &mut FileES) -> anyhow::Res
     }
 
     let mut tika_meta_url = state.settings.read().await.other.tika_url.clone();
-    tika_meta_url.set_path("meta");
+    tika_meta_url.set_path("rmeta/text");
     let req_builder = state.reqwest_client.put(tika_meta_url);
-    let metadata = req_builder
+    let [metadata]: [Metadata; 1] = req_builder
         .header("Accept", "application/json")
+        .header("maxEmbeddedResources", "0")
         .body(File::open(&file.path).await?)
         .send()
         .await?
@@ -91,7 +95,7 @@ pub async fn parse_file(state: Arc<ServerState>, file: &mut FileES) -> anyhow::R
     file.content_type = metadata.content_type.clone();
 
     for parser in PARSERS {
-        if parser.is_supported_content_type(&metadata.content_type) {
+        if parser.is_supported_file(&metadata) {
             parser.parse(Arc::clone(&state), file, &metadata).await?;
         }
     }

@@ -44,10 +44,55 @@ pub async fn create_index(es_client: &Elasticsearch) -> Result<(), elasticsearch
         .indices()
         .create(IndicesCreateParts::Index(ELASTICSEARCH_INDEX))
         .body(json!({
+            "settings": {
+                "index": {
+                    "analysis": {
+                        "filter": {
+                            "english_stemmer": {
+                                "type": "stemmer",
+                                "name": "english"
+                            },
+                            "russian_stemmer": {
+                                "type": "stemmer",
+                                "name": "russian"
+                            },
+                            "english_stop": {
+                                "type": "stop",
+                                "stopwords": "_english_"
+                            },
+                            "russian_stop": {
+                                "type": "stop",
+                                "stopwords": "_russian_"
+                            }
+                        },
+                        "analyzer": {
+                            "en_ru_analyzer": {
+                                "tokenizer": "standard",
+                                "filter": [
+                                    "lowercase",
+                                    "english_stemmer",
+                                    "russian_stemmer",
+                                    "english_stop",
+                                    "russian_stop"
+                                ]
+                            },
+                            "path_en_ru_analyzer": {
+                                "tokenizer": "letter",
+                                "filter": [
+                                    "lowercase",
+                                    "english_stemmer",
+                                    "russian_stemmer"
+                                ]
+                            }
+                        }
+                    }
+                }
+            },
             "mappings": {
                 "properties": {
                     "path": {
-                        "type": "text"
+                        "type": "text",
+                        "analyzer": "path_en_ru_analyzer"
                     },
                     "modified": {
                         "type": "long"
@@ -60,6 +105,10 @@ pub async fn create_index(es_client: &Elasticsearch) -> Result<(), elasticsearch
                     },
                     "content_type": {
                         "type": "keyword"
+                    },
+                    "content": {
+                        "type": "text",
+                        "analyzer": "en_ru_analyzer"
                     },
 
                     "image_embedding": {
@@ -76,10 +125,12 @@ pub async fn create_index(es_client: &Elasticsearch) -> Result<(), elasticsearch
                     },
 
                     "title": {
-                        "type": "text"
+                        "type": "text",
+                        "analyzer": "en_ru_analyzer"
                     },
                     "creator": {
-                        "type": "text"
+                        "type": "text",
+                        "analyzer": "en_ru_analyzer"
                     },
                     "doc_created": {
                         "type": "long"
