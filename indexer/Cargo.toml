@@ -21,6 +21,7 @@ base16ct.workspace = true
 chrono.workspace = true
 once_cell.workspace = true
 async-trait.workspace = true
+mime.workspace = true
 mime_guess.workspace = true
 rust-embed.workspace = true
 uuid.workspace = true

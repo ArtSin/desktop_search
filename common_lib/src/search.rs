@@ -12,6 +12,7 @@ use crate::elasticsearch::FileES;
 pub struct SearchRequest {
     pub page: u32,
     pub query: QueryType,
+    pub content_type: Option<Vec<ContentTypeRequestItem>>,
     pub path_enabled: bool,
     pub hash_enabled: bool,
     pub modified_from: Option<DateTime<Utc>>,
@@ -67,6 +68,23 @@ pub struct DocumentSearchRequest {
     pub num_words_to: Option<u32>,
     pub num_characters_from: Option<u32>,
     pub num_characters_to: Option<u32>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum ContentTypeRequestItem {
+    IncludeType {
+        type_: String,
+    },
+    IncludeSubtypes {
+        subtypes: Vec<String>,
+    },
+    ExcludeType {
+        type_: String,
+    },
+    ExcludeSubtypes {
+        type_: String,
+        subtypes: Vec<String>,
+    },
 }
 
 #[skip_serializing_none]

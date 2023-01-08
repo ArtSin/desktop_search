@@ -15,7 +15,12 @@ use web_sys::window;
 use crate::{
     app::{fetch, widgets::StatusDialogState},
     search::{
-        filters::{CheckboxFilter, DateTimeFilter, NumberFilter, RadioFilter},
+        filters::{
+            content_type::{
+                content_type_filter_items, content_type_request_items, ContentTypeFilter,
+            },
+            CheckboxFilter, DateTimeFilter, NumberFilter, RadioFilter,
+        },
         results::SearchResults,
     },
     settings::{MAX_FILE_SIZE_MAX, MAX_FILE_SIZE_MIN},
@@ -70,6 +75,8 @@ pub fn Search<'a, G: Html>(
     let image_search_enabled = create_signal(cx, true);
 
     let display_filters = create_signal(cx, true);
+    let content_type_disabled = create_signal(cx, true);
+    let content_type_items = content_type_filter_items(cx);
     let path_enabled = create_signal(cx, true);
     let hash_enabled = create_signal(cx, true);
     let modified_from = create_signal(cx, None);
@@ -167,6 +174,8 @@ pub fn Search<'a, G: Html>(
             let search_request = SearchRequest {
                 page,
                 query: search_query,
+                content_type: (!*content_type_disabled.get())
+                    .then(|| content_type_request_items(content_type_items)),
                 path_enabled: *path_enabled.get(),
                 hash_enabled: *hash_enabled.get(),
                 modified_from: *modified_from.get(),
@@ -273,6 +282,8 @@ pub fn Search<'a, G: Html>(
                             view! { cx, }
                         }
                     })
+
+                    ContentTypeFilter(items=content_type_items, disabled=content_type_disabled)
 
                     details {
                         summary { "Основные свойства файла" }
@@ -383,12 +394,11 @@ pub fn Search<'a, G: Html>(
                         button(form="search", type="button", on:click=hide_preview) { "✖" }
 
                         (if content_type.starts_with("video") {
-                            let content_type = content_type.clone();
                             let object_url = object_url.clone();
 
                             view! { cx,
                                 video(id="preview_object", controls=true, autoplay=true) {
-                                    source(src=object_url, type=content_type)
+                                    source(src=object_url)
 
                                     p(style="text-align: center;") {
                                         "Предпросмотр файла не поддерживается"
@@ -396,12 +406,11 @@ pub fn Search<'a, G: Html>(
                                 }
                             }
                         } else if content_type.starts_with("audio") {
-                            let content_type = content_type.clone();
                             let object_url = object_url.clone();
 
                             view! { cx,
                                 audio(id="preview_object", controls=true, autoplay=true) {
-                                    source(src=object_url, type=content_type)
+                                    source(src=object_url)
 
                                     p(style="text-align: center;") {
                                         "Предпросмотр файла не поддерживается"
@@ -409,11 +418,10 @@ pub fn Search<'a, G: Html>(
                                 }
                             }
                         } else {
-                            let content_type = content_type.clone();
                             let object_url = object_url.clone();
 
                             view! { cx,
-                                object(id="preview_object", data=object_url, type=content_type) {
+                                object(id="preview_object", data=object_url) {
                                     p(style="text-align: center;") {
                                         "Предпросмотр файла не поддерживается"
                                     }

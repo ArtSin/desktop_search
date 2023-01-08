@@ -3,6 +3,8 @@ use std::{fmt::Display, str::FromStr};
 use chrono::{DateTime, Local, TimeZone, Utc};
 use sycamore::prelude::*;
 
+pub mod content_type;
+
 #[derive(Prop)]
 pub struct RadioFilterProps<'a, T: Copy> {
     pub text: &'static str,

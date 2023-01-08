@@ -74,7 +74,14 @@ pub async fn get_file(
                 format!("File request error: {}", e),
             )
         })?;
-        let res = match ServeFile::new(params.path).oneshot(request).await {
+        let mut file_mime = mime_guess::from_path(&params.path).first_or_octet_stream();
+        if file_mime.type_() == mime::TEXT && file_mime.essence_str() != mime::TEXT_HTML {
+            file_mime = mime::TEXT_PLAIN;
+        }
+        let res = match ServeFile::new_with_mime(params.path, &file_mime)
+            .oneshot(request)
+            .await
+        {
             Ok(res) => Ok(res.map(boxed)),
             Err(err) => Err((
                 StatusCode::INTERNAL_SERVER_ERROR,

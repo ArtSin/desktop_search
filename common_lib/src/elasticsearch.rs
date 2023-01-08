@@ -32,6 +32,10 @@ pub struct FileES {
     pub hash: String,
     /// MIME content type
     pub content_type: String,
+    /// Type part of content type
+    pub content_type_mime_type: String,
+    /// Essence part of content type
+    pub content_type_mime_essence: String,
     /// Text content
     pub content: Option<String>,
     /// Fields for image files

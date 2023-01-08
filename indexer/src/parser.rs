@@ -3,6 +3,7 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use chrono::{DateTime, Local, TimeZone, Utc};
 use common_lib::elasticsearch::{DocumentData, FileES};
+use mime::Mime;
 use serde::{de::Error, Deserialize, Deserializer};
 use serde_with::{serde_as, DisplayFromStr};
 use tokio::fs::File;
@@ -91,8 +92,16 @@ async fn get_metadata(state: Arc<ServerState>, file: &mut FileES) -> anyhow::Res
 }
 
 pub async fn parse_file(state: Arc<ServerState>, file: &mut FileES) -> anyhow::Result<()> {
-    let metadata = get_metadata(Arc::clone(&state), file).await?;
+    let mut metadata = get_metadata(Arc::clone(&state), file).await?;
+    let mut content_type_mime: Mime = metadata.content_type.parse().unwrap();
+    if content_type_mime.type_() == mime::TEXT {
+        content_type_mime = mime_guess::from_path(&file.path).first_or_octet_stream();
+        metadata.content_type = content_type_mime.to_string();
+    }
+
     file.content_type = metadata.content_type.clone();
+    file.content_type_mime_type = content_type_mime.type_().to_string();
+    file.content_type_mime_essence = content_type_mime.essence_str().to_owned();
 
     for parser in PARSERS {
         if parser.is_supported_file(&metadata) {

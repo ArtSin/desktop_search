@@ -106,6 +106,12 @@ pub async fn create_index(es_client: &Elasticsearch) -> Result<(), elasticsearch
                     "content_type": {
                         "type": "keyword"
                     },
+                    "content_type_mime_type": {
+                        "type": "keyword"
+                    },
+                    "content_type_mime_essence": {
+                        "type": "keyword"
+                    },
                     "content": {
                         "type": "text",
                         "analyzer": "en_ru_analyzer"

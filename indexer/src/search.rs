@@ -4,8 +4,8 @@ use axum::{extract::State, http::StatusCode, Json};
 use common_lib::{
     elasticsearch::{FileES, ELASTICSEARCH_INDEX, ELASTICSEARCH_MAX_SIZE},
     search::{
-        DocumentHighlightedFields, HighlightedFields, ImageQuery, PageType, QueryType,
-        SearchRequest, SearchResponse, SearchResult, TextQuery,
+        ContentTypeRequestItem, DocumentHighlightedFields, HighlightedFields, ImageQuery, PageType,
+        QueryType, SearchRequest, SearchResponse, SearchResult, TextQuery,
     },
 };
 use elasticsearch::{Elasticsearch, SearchParts};
@@ -18,13 +18,46 @@ use crate::{
     ServerState,
 };
 
-use self::query::{range, simple_query_string};
+use self::query::{range, simple_query_string, terms};
 
 const RESULTS_PER_PAGE: u32 = 20;
 const ADJACENT_PAGES: u32 = 3;
 
 fn get_es_request_filter(search_request: &SearchRequest) -> Vec<Value> {
     [
+        search_request.content_type.as_ref().map(|v| {
+            let mut include_type = Vec::new();
+            let mut include_subtypes = Vec::new();
+            let mut exclude_type = Vec::new();
+            let mut exclude_subtypes = Vec::new();
+
+            for x in v {
+                match x {
+                    ContentTypeRequestItem::IncludeType { type_ } => include_type.push(type_),
+                    ContentTypeRequestItem::IncludeSubtypes { subtypes } => {
+                        include_subtypes.extend(subtypes)
+                    }
+                    ContentTypeRequestItem::ExcludeType { type_ } => exclude_type.push(type_),
+                    ContentTypeRequestItem::ExcludeSubtypes { type_, subtypes } => {
+                        include_type.push(type_);
+                        exclude_subtypes.extend(subtypes)
+                    }
+                };
+            }
+
+            json!({
+                "bool": {
+                    "should": [
+                        terms("content_type_mime_type", include_type),
+                        terms("content_type_mime_essence", include_subtypes)
+                    ],
+                    "must_not": [
+                        terms("content_type_mime_type", exclude_type),
+                        terms("content_type_mime_essence", exclude_subtypes)
+                    ]
+                }
+            })
+        }),
         (search_request.modified_from.is_some() || search_request.modified_to.is_some()).then(
             || {
                 range(
@@ -315,6 +348,7 @@ fn get_results(es_response_body: &Value) -> Vec<SearchResult> {
                     ),
                 },
             };
+            file_es.content = None;
             SearchResult {
                 file: file_es,
                 highlights,
@@ -385,6 +419,14 @@ mod query {
             "simple_query_string": {
                 "query": query,
                 "fields": fields,
+            }
+        })
+    }
+
+    pub fn terms(field: &str, values: impl Serialize) -> Value {
+        json!({
+            "terms": {
+                field: values
             }
         })
     }
