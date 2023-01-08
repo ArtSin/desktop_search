@@ -77,7 +77,7 @@ async fn indexing_status_ws(mut socket: WebSocket, state: Arc<ServerState>) {
     loop {
         match rx.recv().await {
             Ok(event) => {
-                if let IndexingEvent::Finished = event {
+                if let IndexingEvent::Finished(_) = event {
                     if !send_index_stats(&mut socket, &state).await {
                         return;
                     }

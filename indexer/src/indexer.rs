@@ -1,4 +1,4 @@
-use std::{future::Future, sync::Arc};
+use std::{future::Future, sync::Arc, time::Instant};
 
 use axum::{extract::State, http::StatusCode};
 use common_lib::{
@@ -6,9 +6,7 @@ use common_lib::{
     indexer::IndexingEvent,
 };
 use elasticsearch::{
-    http::request::JsonBody,
-    indices::{IndicesCreateParts, IndicesExistsParts, IndicesRefreshParts},
-    BulkParts, Elasticsearch,
+    http::request::JsonBody, indices::IndicesRefreshParts, BulkParts, Elasticsearch,
 };
 use serde_json::{json, Value};
 use tokio::sync::{
@@ -23,143 +21,8 @@ use crate::{
     ServerState,
 };
 
+pub mod create_index;
 pub mod status;
-
-/// Creates index for storing indexed files, if it doesn't exist
-pub async fn create_index(es_client: &Elasticsearch) -> Result<(), elasticsearch::Error> {
-    // Check if index exists
-    if es_client
-        .indices()
-        .exists(IndicesExistsParts::Index(&[ELASTICSEARCH_INDEX]))
-        .send()
-        .await?
-        .status_code()
-        == StatusCode::OK
-    {
-        return Ok(());
-    }
-
-    // Create index and set mapping
-    es_client
-        .indices()
-        .create(IndicesCreateParts::Index(ELASTICSEARCH_INDEX))
-        .body(json!({
-            "settings": {
-                "index": {
-                    "analysis": {
-                        "filter": {
-                            "english_stemmer": {
-                                "type": "stemmer",
-                                "name": "english"
-                            },
-                            "russian_stemmer": {
-                                "type": "stemmer",
-                                "name": "russian"
-                            },
-                            "english_stop": {
-                                "type": "stop",
-                                "stopwords": "_english_"
-                            },
-                            "russian_stop": {
-                                "type": "stop",
-                                "stopwords": "_russian_"
-                            }
-                        },
-                        "analyzer": {
-                            "en_ru_analyzer": {
-                                "tokenizer": "standard",
-                                "filter": [
-                                    "lowercase",
-                                    "english_stemmer",
-                                    "russian_stemmer",
-                                    "english_stop",
-                                    "russian_stop"
-                                ]
-                            },
-                            "path_en_ru_analyzer": {
-                                "tokenizer": "letter",
-                                "filter": [
-                                    "lowercase",
-                                    "english_stemmer",
-                                    "russian_stemmer"
-                                ]
-                            }
-                        }
-                    }
-                }
-            },
-            "mappings": {
-                "properties": {
-                    "path": {
-                        "type": "text",
-                        "analyzer": "path_en_ru_analyzer"
-                    },
-                    "modified": {
-                        "type": "long"
-                    },
-                    "size": {
-                        "type": "long"
-                    },
-                    "hash": {
-                        "type": "keyword"
-                    },
-                    "content_type": {
-                        "type": "keyword"
-                    },
-                    "content_type_mime_type": {
-                        "type": "keyword"
-                    },
-                    "content_type_mime_essence": {
-                        "type": "keyword"
-                    },
-                    "content": {
-                        "type": "text",
-                        "analyzer": "en_ru_analyzer"
-                    },
-
-                    "image_embedding": {
-                        "type": "dense_vector",
-                        "dims": 512,
-                        "index": true,
-                        "similarity": "dot_product"
-                    },
-                    "width": {
-                        "type": "integer"
-                    },
-                    "height": {
-                        "type": "integer"
-                    },
-
-                    "title": {
-                        "type": "text",
-                        "analyzer": "en_ru_analyzer"
-                    },
-                    "creator": {
-                        "type": "text",
-                        "analyzer": "en_ru_analyzer"
-                    },
-                    "doc_created": {
-                        "type": "long"
-                    },
-                    "doc_modified": {
-                        "type": "long"
-                    },
-                    "num_pages": {
-                        "type": "integer"
-                    },
-                    "num_words": {
-                        "type": "integer"
-                    },
-                    "num_characters": {
-                        "type": "integer"
-                    }
-                }
-            }
-        }))
-        .send()
-        .await?;
-    Ok(())
-}
 
 /// Update indexing status and send event to channel
 async fn on_event(state: Arc<ServerState>, event: IndexingEvent) {
@@ -167,7 +30,7 @@ async fn on_event(state: Arc<ServerState>, event: IndexingEvent) {
         IndexingEvent::Started => tracing::info!("Indexing started"),
         IndexingEvent::DiffCalculated { .. } => tracing::info!("Difference calculated"),
         IndexingEvent::Error(e) => tracing::error!("Error while indexing: {}", e),
-        IndexingEvent::Finished => tracing::info!("Indexing finished"),
+        IndexingEvent::Finished(duration) => tracing::info!("Indexing finished in {:#?}", duration),
         _ => {}
     }
     state
@@ -299,6 +162,8 @@ pub async fn index(State(state): State<Arc<ServerState>>) -> (StatusCode, String
     on_event(Arc::clone(&state), IndexingEvent::Started).await;
 
     tokio::spawn(async move {
+        let start_time = Instant::now();
+
         // Get files lists from file system and Elasticsearch
         let tmp = Arc::clone(&state);
         let file_system_files_f = tokio::task::spawn_blocking(move || {
@@ -360,7 +225,13 @@ pub async fn index(State(state): State<Arc<ServerState>>) -> (StatusCode, String
         {
             on_event(Arc::clone(&state), IndexingEvent::Error(e.to_string())).await;
         }
-        on_event(Arc::clone(&state), IndexingEvent::Finished).await;
+
+        let indexing_duration = Instant::now() - start_time;
+        on_event(
+            Arc::clone(&state),
+            IndexingEvent::Finished(indexing_duration),
+        )
+        .await;
     });
 
     (StatusCode::ACCEPTED, String::new())

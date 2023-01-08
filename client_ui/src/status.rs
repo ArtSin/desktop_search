@@ -112,6 +112,17 @@ pub fn Status<'a, G: Html>(
                                         "Обработано " (data.processed) " файлов, загружено "
                                         (data.sent) " изменений"
                                     }
+                                    (if let Some(duration) = data.duration {
+                                        let total_s = duration.as_secs();
+                                        let (h, m, s) = (total_s / 3600, (total_s / 60) % 60, total_s % 60);
+                                        view! { cx,
+                                            p {
+                                                "Прошло " (h) " ч " (m) " мин " (s) " с"
+                                            }
+                                        }
+                                    } else {
+                                        view! { cx, }
+                                    })
                                     Keyed(
                                         iterable=errors,
                                         key=|e| e.to_owned(),

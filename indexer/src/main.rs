@@ -20,7 +20,7 @@ use tracing_subscriber::{
 use tracing_unwrap::ResultExt;
 
 use crate::{
-    indexer::create_index,
+    indexer::create_index::create_index,
     settings::{read_settings_file, InternalSettings},
 };
 

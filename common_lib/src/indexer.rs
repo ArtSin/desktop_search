@@ -1,4 +1,4 @@
-use std::{fmt::Display, mem::take};
+use std::{fmt::Display, mem::take, time::Duration};
 
 use serde::{Deserialize, Serialize};
 
@@ -13,7 +13,7 @@ pub enum IndexingEvent {
     FileProcessed,
     FilesSent(usize),
     Error(String),
-    Finished,
+    Finished(Duration),
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -23,6 +23,7 @@ pub struct IndexingStatusData {
     pub to_update: usize,
     pub processed: usize,
     pub sent: usize,
+    pub duration: Option<Duration>,
     pub errors: Vec<String>,
 }
 
@@ -84,10 +85,11 @@ impl IndexingStatus {
                 }
                 _ => unreachable!(),
             },
-            IndexingEvent::Finished => {
+            IndexingEvent::Finished(duration) => {
                 *self = match self {
                     Self::Indexing(data) => {
-                        let tmp = take(data);
+                        let mut tmp = take(data);
+                        tmp.duration = Some(duration);
                         Self::Finished(tmp)
                     }
                     _ => unreachable!(),
