@@ -41,10 +41,10 @@ impl Parser for ImageParser {
             file.path.display()
         );
 
-        let reqwest_client = &state.reqwest_client;
         let nnserver_url = state.settings.read().await.other.nnserver_url.clone();
         let embedding =
-            get_image_search_image_embedding(reqwest_client, nnserver_url, &file.path).await?;
+            get_image_search_image_embedding(&state.reqwest_client, nnserver_url, &file.path)
+                .await?;
 
         file.image_data = ImageData {
             image_embedding: embedding.embedding,

@@ -38,12 +38,23 @@ pub struct FileES {
     pub content_type_mime_essence: String,
     /// Text content
     pub content: Option<String>,
+    /// Fields for text files
+    #[serde(flatten)]
+    pub text_data: TextData,
     /// Fields for image files
     #[serde(flatten)]
     pub image_data: ImageData,
     /// Fields for document files
     #[serde(flatten)]
     pub document_data: DocumentData,
+}
+
+/// Fields for text files
+#[skip_serializing_none]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct TextData {
+    /// MiniLM embedding of text
+    pub text_embedding: Option<Vec<f32>>,
 }
 
 /// Fields for image files

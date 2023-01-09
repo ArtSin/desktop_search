@@ -58,6 +58,7 @@ impl TryFrom<FileInfo> for FileES {
             content_type_mime_type: String::new(),
             content_type_mime_essence: String::new(),
             content: None,
+            text_data: Default::default(),
             image_data: Default::default(),
             document_data: Default::default(),
         })

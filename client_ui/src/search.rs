@@ -72,6 +72,7 @@ pub fn Search<'a, G: Html>(
 
     let query_type = create_signal(cx, QueryType::Text);
     let content_enabled = create_signal(cx, true);
+    let text_search_enabled = create_signal(cx, true);
     let image_search_enabled = create_signal(cx, true);
 
     let display_filters = create_signal(cx, true);
@@ -165,6 +166,7 @@ pub fn Search<'a, G: Html>(
                 QueryType::Text => common_lib::search::QueryType::Text(TextQuery {
                     query: (*query.get()).clone(),
                     content_enabled: *content_enabled.get(),
+                    text_search_enabled: *text_search_enabled.get(),
                     image_search_enabled: *image_search_enabled.get(),
                 }),
                 QueryType::Image => common_lib::search::QueryType::Image(ImageQuery {
@@ -273,6 +275,8 @@ pub fn Search<'a, G: Html>(
                                 fieldset {
                                     legend { "Тип поиска" }
                                     CheckboxFilter(text="Поиск по содержимому", id="content", value_enabled=content_enabled)
+                                    CheckboxFilter(text="Семантический поиск по тексту", id="text_search",
+                                        value_enabled=text_search_enabled)
                                     CheckboxFilter(text="Семантический поиск по изображениям", id="image_search",
                                         value_enabled=image_search_enabled)
                                 }

@@ -1,9 +1,9 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use common_lib::elasticsearch::FileES;
+use common_lib::elasticsearch::{FileES, TextData};
 
-use crate::ServerState;
+use crate::{embeddings::get_text_search_embedding, ServerState};
 
 use super::{Metadata, Parser};
 
@@ -17,11 +17,28 @@ impl Parser for TextParser {
 
     async fn parse(
         &self,
-        _state: Arc<ServerState>,
+        state: Arc<ServerState>,
         file: &mut FileES,
         metadata: &Metadata,
     ) -> anyhow::Result<()> {
         file.content = metadata.content.clone();
+
+        tracing::debug!(
+            "Calculating text embedding of file: {}",
+            file.path.display()
+        );
+
+        let nnserver_url = state.settings.read().await.other.nnserver_url.clone();
+        let embedding = get_text_search_embedding(
+            &state.reqwest_client,
+            nnserver_url,
+            file.content.as_ref().unwrap(),
+        )
+        .await?;
+
+        file.text_data = TextData {
+            text_embedding: Some(embedding.embedding),
+        };
         Ok(())
     }
 }

@@ -36,6 +36,7 @@ pub enum QueryType {
 pub struct TextQuery {
     pub query: String,
     pub content_enabled: bool,
+    pub text_search_enabled: bool,
     pub image_search_enabled: bool,
 }
 

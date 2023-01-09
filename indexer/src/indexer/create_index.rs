@@ -98,6 +98,13 @@ pub async fn create_index(es_client: &Elasticsearch) -> Result<(), elasticsearch
                         "analyzer": "en_ru_analyzer"
                     },
 
+                    "text_embedding": {
+                        "type": "dense_vector",
+                        "dims": 384,
+                        "index": true,
+                        "similarity": "dot_product"
+                    },
+
                     "image_embedding": {
                         "type": "dense_vector",
                         "dims": 512,

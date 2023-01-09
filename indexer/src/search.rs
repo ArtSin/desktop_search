@@ -14,7 +14,10 @@ use url::Url;
 use uuid::Uuid;
 
 use crate::{
-    embeddings::{get_image_search_image_embedding, get_image_search_text_embedding},
+    embeddings::{
+        get_image_search_image_embedding, get_image_search_text_embedding,
+        get_text_search_embedding,
+    },
     ServerState,
 };
 
@@ -190,10 +193,14 @@ async fn get_request_body(
     nnserver_url: Url,
     search_request: &SearchRequest,
 ) -> anyhow::Result<Value> {
+    // TODO: make into settings
     const KNN_CANDIDATES_MULTIPLIER: u32 = 10;
-    const IMAGE_SEARCH_BOOST: f32 = 0.5;
+    const TEXT_SEARCH_BOOST: f32 = 1.0;
+    const IMAGE_SEARCH_BOOST: f32 = 1.0;
+    const QUERY_BOOST: f32 = 1.0;
 
     let mut request_body = Value::Object(serde_json::Map::new());
+    let mut request_body_knn = Vec::new();
     let num_candidates = min(
         RESULTS_PER_PAGE * KNN_CANDIDATES_MULTIPLIER,
         ELASTICSEARCH_MAX_SIZE as u32,
@@ -205,32 +212,37 @@ async fn get_request_body(
     match search_request.query {
         QueryType::Text(TextQuery {
             ref query,
+            text_search_enabled,
             image_search_enabled,
             ..
         }) => {
-            if image_search_enabled {
-                let image_search_text_embedding =
-                    get_image_search_text_embedding(reqwest_client, nnserver_url, query.clone())
-                        .await?;
+            if text_search_enabled {
+                let text_search_embedding =
+                    get_text_search_embedding(reqwest_client, nnserver_url.clone(), query).await?;
 
-                request_body.as_object_mut().unwrap().insert(
-                    "knn".to_owned(),
-                    json!({
-                        "field": "image_embedding",
-                        "query_vector": image_search_text_embedding.embedding,
-                        "k": RESULTS_PER_PAGE,
-                        "num_candidates": num_candidates,
-                        "filter": es_request_filter,
-                        "boost": IMAGE_SEARCH_BOOST
-                    }),
-                );
+                request_body_knn.push(json!({
+                    "field": "text_embedding",
+                    "query_vector": text_search_embedding.embedding,
+                    "k": RESULTS_PER_PAGE,
+                    "num_candidates": num_candidates,
+                    "filter": es_request_filter,
+                    "boost": IMAGE_SEARCH_BOOST
+                }));
             }
 
-            let query_boost = if image_search_enabled {
-                1.0 - IMAGE_SEARCH_BOOST
-            } else {
-                1.0
-            };
+            if image_search_enabled {
+                let image_search_text_embedding =
+                    get_image_search_text_embedding(reqwest_client, nnserver_url, query).await?;
+
+                request_body_knn.push(json!({
+                    "field": "image_embedding",
+                    "query_vector": image_search_text_embedding.embedding,
+                    "k": RESULTS_PER_PAGE,
+                    "num_candidates": num_candidates,
+                    "filter": es_request_filter,
+                    "boost": IMAGE_SEARCH_BOOST
+                }));
+            }
 
             request_body.as_object_mut().unwrap().insert(
                 "query".to_owned(),
@@ -238,7 +250,7 @@ async fn get_request_body(
                     "bool": {
                         "must": es_request_must,
                         "filter": es_request_filter,
-                        "boost": query_boost
+                        "boost": QUERY_BOOST
                     }
                 }),
             );
@@ -277,17 +289,21 @@ async fn get_request_body(
                 .embedding
                 .ok_or_else(|| anyhow::anyhow!("Incorrect image"))?;
 
-            request_body.as_object_mut().unwrap().insert(
-                "knn".to_owned(),
-                json!({
-                    "field": "image_embedding",
-                    "query_vector": embedding,
-                    "k": RESULTS_PER_PAGE,
-                    "num_candidates": num_candidates,
-                    "filter": es_request_filter
-                }),
-            );
+            request_body_knn.push(json!({
+                "field": "image_embedding",
+                "query_vector": embedding,
+                "k": RESULTS_PER_PAGE,
+                "num_candidates": num_candidates,
+                "filter": es_request_filter
+            }));
         }
+    }
+
+    if !request_body_knn.is_empty() {
+        request_body
+            .as_object_mut()
+            .unwrap()
+            .insert("knn".to_owned(), Value::Array(request_body_knn));
     }
     Ok(request_body)
 }
