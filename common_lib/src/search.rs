@@ -38,6 +38,9 @@ pub struct TextQuery {
     pub content_enabled: bool,
     pub text_search_enabled: bool,
     pub image_search_enabled: bool,
+    pub query_coeff: f64,
+    pub text_search_coeff: f64,
+    pub image_search_coeff: f64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

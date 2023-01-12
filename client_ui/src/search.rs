@@ -19,7 +19,7 @@ use crate::{
             content_type::{
                 content_type_filter_items, content_type_request_items, ContentTypeFilter,
             },
-            CheckboxFilter, DateTimeFilter, NumberFilter, RadioFilter,
+            CheckboxFilter, DateTimeFilter, NumberFilter, RadioFilter, RangeWidget,
         },
         results::SearchResults,
     },
@@ -74,6 +74,9 @@ pub fn Search<'a, G: Html>(
     let content_enabled = create_signal(cx, true);
     let text_search_enabled = create_signal(cx, true);
     let image_search_enabled = create_signal(cx, true);
+    let query_coeff = create_signal(cx, 1.0);
+    let text_search_coeff = create_signal(cx, 2.0);
+    let image_search_coeff = create_signal(cx, 2.0);
 
     let display_filters = create_signal(cx, true);
     let content_type_disabled = create_signal(cx, true);
@@ -168,6 +171,9 @@ pub fn Search<'a, G: Html>(
                     content_enabled: *content_enabled.get(),
                     text_search_enabled: *text_search_enabled.get(),
                     image_search_enabled: *image_search_enabled.get(),
+                    query_coeff: *query_coeff.get(),
+                    text_search_coeff: *text_search_coeff.get(),
+                    image_search_coeff: *image_search_coeff.get(),
                 }),
                 QueryType::Image => common_lib::search::QueryType::Image(ImageQuery {
                     image_path: (*query_image_path.get()).clone(),
@@ -279,6 +285,17 @@ pub fn Search<'a, G: Html>(
                                         value_enabled=text_search_enabled)
                                     CheckboxFilter(text="Семантический поиск по изображениям", id="image_search",
                                         value_enabled=image_search_enabled)
+                                }
+
+                                details {
+                                    summary { "Коэффициенты поиска" }
+
+                                    RangeWidget(legend="По содержимому", id="query_coeff",
+                                        min=1.0, max=10.0, step=0.1, value=query_coeff)
+                                    RangeWidget(legend="Семантический по тексту", id="text_search_coeff",
+                                        min=1.0, max=10.0, step=0.1, value=text_search_coeff)
+                                    RangeWidget(legend="Семантический по изображениям", id="image_search_coeff",
+                                        min=1.0, max=10.0, step=0.1, value=image_search_coeff)
                                 }
                             }
                         }

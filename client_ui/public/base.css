@@ -97,6 +97,10 @@ div.filter_field {
     align-items: center;
 }
 
+div.filter_field>input[type="range"] {
+    margin: 2px 0;
+}
+
 div.radio_checkbox_field {
     display: flex;
     align-items: center;

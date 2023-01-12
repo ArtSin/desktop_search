@@ -195,9 +195,6 @@ async fn get_request_body(
 ) -> anyhow::Result<Value> {
     // TODO: make into settings
     const KNN_CANDIDATES_MULTIPLIER: u32 = 10;
-    const TEXT_SEARCH_BOOST: f32 = 1.0;
-    const IMAGE_SEARCH_BOOST: f32 = 1.0;
-    const QUERY_BOOST: f32 = 1.0;
 
     let mut request_body = Value::Object(serde_json::Map::new());
     let mut request_body_knn = Vec::new();
@@ -214,9 +211,12 @@ async fn get_request_body(
             ref query,
             text_search_enabled,
             image_search_enabled,
+            query_coeff,
+            text_search_coeff,
+            image_search_coeff,
             ..
         }) => {
-            if text_search_enabled {
+            if text_search_enabled && !query.is_empty() {
                 let text_search_embedding =
                     get_text_search_embedding(reqwest_client, nnserver_url.clone(), query).await?;
 
@@ -226,11 +226,11 @@ async fn get_request_body(
                     "k": RESULTS_PER_PAGE,
                     "num_candidates": num_candidates,
                     "filter": es_request_filter,
-                    "boost": IMAGE_SEARCH_BOOST
+                    "boost": text_search_coeff
                 }));
             }
 
-            if image_search_enabled {
+            if image_search_enabled && !query.is_empty() {
                 let image_search_text_embedding =
                     get_image_search_text_embedding(reqwest_client, nnserver_url, query).await?;
 
@@ -240,7 +240,7 @@ async fn get_request_body(
                     "k": RESULTS_PER_PAGE,
                     "num_candidates": num_candidates,
                     "filter": es_request_filter,
-                    "boost": IMAGE_SEARCH_BOOST
+                    "boost": image_search_coeff
                 }));
             }
 
@@ -250,10 +250,11 @@ async fn get_request_body(
                     "bool": {
                         "must": es_request_must,
                         "filter": es_request_filter,
-                        "boost": QUERY_BOOST
+                        "boost": query_coeff
                     }
                 }),
             );
+
             request_body.as_object_mut().unwrap().insert(
                 "highlight".to_owned(),
                 json!({

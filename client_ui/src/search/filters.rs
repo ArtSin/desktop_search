@@ -200,3 +200,34 @@ where
         }
     }
 }
+
+#[derive(Prop)]
+pub struct RangeWidgetProps<'a, T> {
+    pub legend: &'static str,
+    pub id: &'static str,
+    pub min: T,
+    pub max: T,
+    pub step: T,
+    pub value: &'a Signal<T>,
+}
+
+#[component]
+pub fn RangeWidget<'a, T, G>(cx: Scope<'a>, props: RangeWidgetProps<'a, T>) -> View<G>
+where
+    T: FromStr + Display + 'static,
+    <T as FromStr>::Err: std::fmt::Debug,
+    G: Html,
+{
+    let value_str = create_signal(cx, props.value.get().to_string());
+    create_effect(cx, || props.value.set(value_str.get().parse().unwrap()));
+
+    view! { cx,
+        fieldset {
+            legend { (props.legend) }
+            div(class="filter_field") {
+                label(for=props.id) { (format!("{:.1}", props.value.get())) " " }
+                input(type="range", min=props.min, max=props.max, step=props.step, bind:value=value_str) {}
+            }
+        }
+    }
+}

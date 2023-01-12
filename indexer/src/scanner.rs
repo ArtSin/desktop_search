@@ -8,7 +8,6 @@ use common_lib::{
     settings::Settings,
 };
 use elasticsearch::{Elasticsearch, SearchParts};
-use once_cell::sync::OnceCell;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
@@ -25,20 +24,15 @@ pub struct FileInfo {
     pub modified: DateTime<Utc>,
     /// Size of file in bytes
     pub size: u64,
-    /// SHA-256 hash of file (lazily evaluated)
-    pub hash: OnceCell<[u8; 32]>,
 }
 
 impl From<FileES> for FileInfo {
     fn from(x: FileES) -> Self {
-        let mut buf = [0; 32];
-        base16ct::lower::decode(x.hash, &mut buf).unwrap();
         Self {
             _id: x._id,
             path: x.path,
             modified: x.modified,
             size: x.size,
-            hash: OnceCell::from(buf),
         }
     }
 }
@@ -47,7 +41,17 @@ impl TryFrom<FileInfo> for FileES {
     type Error = std::io::Error;
 
     fn try_from(x: FileInfo) -> Result<Self, Self::Error> {
-        let hash = base16ct::lower::encode_string(x.get_hash()?);
+        tracing::debug!("Calculating hash of file: {}", x.path.display());
+        let file = match std::fs::read(&x.path) {
+            Ok(x) => x,
+            Err(e) => {
+                tracing::error!("Error reading file: {}", e);
+                return Err(e);
+            }
+        };
+        let hash_bytes: [u8; 32] = Sha256::digest(file).into();
+        let hash = base16ct::lower::encode_string(&hash_bytes);
+
         Ok(Self {
             _id: x._id,
             path: x.path,
@@ -69,21 +73,6 @@ impl FileInfo {
     /// Can file be indexed with current settings
     fn can_index(&self, settings: &Settings) -> bool {
         self.size <= settings.max_file_size
-    }
-
-    /// Returns hash of file (and calculates it if necessary)
-    fn get_hash(&self) -> std::io::Result<&[u8; 32]> {
-        self.hash.get_or_try_init(|| {
-            tracing::debug!("Calculating hash of file: {}", self.path.display());
-            let file = match std::fs::read(&self.path) {
-                Ok(x) => x,
-                Err(e) => {
-                    tracing::error!("Error reading file: {}", e);
-                    return Err(e);
-                }
-            };
-            Ok(Sha256::digest(file).into())
-        })
     }
 
     /// Checks if file was modified.
@@ -172,7 +161,6 @@ pub fn get_file_system_files_list(settings: &Settings) -> Vec<FileInfo> {
                     path: path.to_path_buf(),
                     modified: metadata.modified().unwrap().into(),
                     size: metadata.len(),
-                    hash: OnceCell::new(),
                 };
 
                 file_info.can_index(settings).then_some(file_info)
