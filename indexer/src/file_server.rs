@@ -11,6 +11,7 @@ use serde::Deserialize;
 use tokio::process::Command;
 use tower::ServiceExt;
 use tower_http::services::ServeFile;
+use tracing_unwrap::{OptionExt, ResultExt};
 
 #[derive(RustEmbed)]
 #[folder = "$CARGO_MANIFEST_DIR/../client_ui/dist"]
@@ -19,6 +20,7 @@ struct Assets;
 #[derive(Deserialize)]
 pub struct FileQuery {
     path: String,
+    content_type: Option<String>,
     thumbnail: bool,
 }
 
@@ -44,7 +46,7 @@ pub async fn get_client_file(uri: Uri) -> Result<Response<BoxBody>, (StatusCode,
                     },
                 )
                 .body(body)
-                .unwrap())
+                .unwrap_or_log())
         }
         None => Err((StatusCode::NOT_FOUND, "Not Found".to_owned())),
     }
@@ -59,7 +61,7 @@ pub async fn get_file(
             Ok(res) => Ok(Response::builder()
                 .header("Content-Type", "image/jpeg")
                 .body(boxed(Body::from(res)))
-                .unwrap()),
+                .unwrap_or_log()),
             Err(err) => Err((
                 StatusCode::INTERNAL_SERVER_ERROR,
                 format!("Can't create thumbnail: {}", err),
@@ -67,17 +69,25 @@ pub async fn get_file(
         }
     } else {
         let mut request_builder = Request::builder();
-        *request_builder.headers_mut().unwrap() = headers;
+        *request_builder.headers_mut().unwrap_or_log() = headers;
         let request = request_builder.body(()).map_err(|e| {
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 format!("File request error: {}", e),
             )
         })?;
-        let mut file_mime = mime_guess::from_path(&params.path).first_or_octet_stream();
-        if file_mime.type_() == mime::TEXT && file_mime.essence_str() != mime::TEXT_HTML {
-            file_mime = mime::TEXT_PLAIN;
-        }
+
+        let file_mime = match params.content_type {
+            Some(x) => x.parse().unwrap_or_log(),
+            None => {
+                let mut tmp = mime_guess::from_path(&params.path).first_or_octet_stream();
+                if tmp.type_() == mime::TEXT && tmp.essence_str() != mime::TEXT_HTML {
+                    tmp = mime::TEXT_PLAIN;
+                };
+                tmp
+            }
+        };
+
         let res = match ServeFile::new_with_mime(params.path, &file_mime)
             .oneshot(request)
             .await
@@ -98,6 +108,7 @@ pub async fn get_file(
 }
 
 async fn get_thumbnail(path: &str) -> std::io::Result<Vec<u8>> {
+    // TODO: other method for jpeg and png
     Command::new("ffmpeg")
         .args([
             "-i",

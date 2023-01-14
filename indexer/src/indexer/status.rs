@@ -15,6 +15,7 @@ use elasticsearch::{indices::IndicesStatsParts, Elasticsearch};
 use serde::Serialize;
 use serde_json::Value;
 use tokio::sync::broadcast;
+use tracing_unwrap::{OptionExt, ResultExt};
 
 use crate::ServerState;
 
@@ -32,10 +33,12 @@ async fn index_stats(es_client: &Elasticsearch) -> Result<IndexStats, elasticsea
     let es_response_body = &get_es_response(es_client).await?["indices"][ELASTICSEARCH_INDEX];
 
     Ok(IndexStats {
-        doc_cnt: es_response_body["total"]["docs"]["count"].as_u64().unwrap(),
+        doc_cnt: es_response_body["total"]["docs"]["count"]
+            .as_u64()
+            .unwrap_or_log(),
         index_size: es_response_body["total"]["store"]["size_in_bytes"]
             .as_u64()
-            .unwrap(),
+            .unwrap_or_log(),
     })
 }
 
@@ -52,7 +55,7 @@ async fn indexing_status_ws(mut socket: WebSocket, state: Arc<ServerState>) {
         T: Serialize,
         IndexingWSMessage: From<T>,
     {
-        let event_json = serde_json::to_string(&IndexingWSMessage::from(message)).unwrap();
+        let event_json = serde_json::to_string(&IndexingWSMessage::from(message)).unwrap_or_log();
         socket.send(ws::Message::Text(event_json)).await.is_ok()
     }
     async fn send_indexing_status(socket: &mut WebSocket, state: &ServerState) -> bool {

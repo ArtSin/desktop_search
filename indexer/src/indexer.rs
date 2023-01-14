@@ -6,14 +6,16 @@ use common_lib::{
     indexer::IndexingEvent,
 };
 use elasticsearch::{
-    http::request::JsonBody, indices::IndicesRefreshParts, BulkParts, Elasticsearch,
+    http::request::JsonBody,
+    indices::{IndicesDeleteParts, IndicesRefreshParts},
+    BulkParts, Elasticsearch,
 };
 use serde_json::{json, Value};
 use tokio::sync::{
     mpsc::{self, UnboundedReceiver, UnboundedSender},
     Semaphore,
 };
-use tracing_unwrap::ResultExt;
+use tracing_unwrap::{OptionExt, ResultExt};
 
 use crate::{
     parser::parse_file,
@@ -62,20 +64,20 @@ async fn streaming_process<T, F, Fut>(
     ));
     let mut futures = Vec::new();
     for file in files {
-        let permit = Arc::clone(&semaphore).acquire_owned().await.unwrap();
+        let permit = Arc::clone(&semaphore).acquire_owned().await.unwrap_or_log();
         let state = Arc::clone(&state);
         let tx = tx.clone();
         futures.push(tokio::spawn(async move {
             let res = process(Arc::clone(&state), file).await;
-            tx.send(res?).unwrap();
+            tx.send(res?).unwrap_or_log();
             on_event(state, IndexingEvent::FileProcessed).await;
             drop(permit);
             Ok::<(), anyhow::Error>(())
         }));
     }
     for f in futures {
-        if let Err(e) = f.await.unwrap() {
-            on_event(Arc::clone(&state), IndexingEvent::Error(e.to_string())).await;
+        if let Err(e) = f.await.unwrap_or_log() {
+            on_event(Arc::clone(&state), IndexingEvent::Error(format!("{:?}", e))).await;
         }
     }
 }
@@ -86,7 +88,9 @@ async fn add_new(state: Arc<ServerState>, file: FileInfo) -> anyhow::Result<(Val
 
     let action = json!({"index": {}});
     let mut file_es: FileES = file.try_into().unwrap_or_log();
-    parse_file(state, &mut file_es).await?;
+    parse_file(state, &mut file_es)
+        .await
+        .map_err(|e| e.context(format!("Error parsing file: {}", file_es.path.display())))?;
     let data = serde_json::to_value(file_es).unwrap_or_log();
     Ok((action, data))
 }
@@ -98,9 +102,14 @@ async fn update_modified(
 ) -> anyhow::Result<(Value, Value)> {
     tracing::debug!("Update file: {}", new_file.path.display());
 
-    let action = json!({"index": { "_id": old_file._id.unwrap() }});
+    let action = json!({"index": { "_id": old_file._id.unwrap_or_log() }});
     let mut new_file_es: FileES = new_file.try_into().unwrap_or_log();
-    parse_file(state, &mut new_file_es).await?;
+    parse_file(state, &mut new_file_es).await.map_err(|e| {
+        e.context(format!(
+            "Error parsing file: {}",
+            new_file_es.path.display()
+        ))
+    })?;
     let data = serde_json::to_value(new_file_es).unwrap_or_log();
     Ok((action, data))
 }
@@ -109,7 +118,7 @@ async fn update_modified(
 async fn remove_old(_state: Arc<ServerState>, file: FileInfo) -> anyhow::Result<(Value, Value)> {
     tracing::debug!("Remove file: {}", file.path.display());
 
-    let action = json!({"delete": { "_id": file._id.unwrap() }});
+    let action = json!({"delete": { "_id": file._id.unwrap_or_log() }});
     Ok((action, Value::Null))
 }
 
@@ -212,7 +221,7 @@ pub async fn index(State(state): State<Arc<ServerState>>) -> (StatusCode, String
         .await;
         streaming_process(Arc::clone(&state), tx, diff.removed, remove_old).await;
         if let Err(e) = bulk_send_f.await.unwrap_or_log() {
-            on_event(Arc::clone(&state), IndexingEvent::Error(e.to_string())).await;
+            on_event(Arc::clone(&state), IndexingEvent::Error(format!("{:?}", e))).await;
         }
 
         // Finish indexing
@@ -223,7 +232,7 @@ pub async fn index(State(state): State<Arc<ServerState>>) -> (StatusCode, String
             .send()
             .await
         {
-            on_event(Arc::clone(&state), IndexingEvent::Error(e.to_string())).await;
+            on_event(Arc::clone(&state), IndexingEvent::Error(format!("{:?}", e))).await;
         }
 
         let indexing_duration = Instant::now() - start_time;
@@ -235,4 +244,44 @@ pub async fn index(State(state): State<Arc<ServerState>>) -> (StatusCode, String
     });
 
     (StatusCode::ACCEPTED, String::new())
+}
+
+/// Delete and create new index
+pub async fn delete_index(
+    State(state): State<Arc<ServerState>>,
+) -> Result<(), (StatusCode, String)> {
+    if !state.indexing_status.read().await.can_start() {
+        return Err((StatusCode::BAD_REQUEST, "Already indexing".to_owned()));
+    }
+
+    let start_time = Instant::now();
+    on_event(
+        Arc::clone(&state),
+        IndexingEvent::DiffCalculated {
+            to_add: 0,
+            to_remove: 0,
+            to_update: 0,
+        },
+    )
+    .await;
+
+    state
+        .es_client
+        .indices()
+        .delete(IndicesDeleteParts::Index(&[ELASTICSEARCH_INDEX]))
+        .send()
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    create_index::create_index(&state.es_client)
+        .await
+        .expect_or_log("Can't create Elasticsearch index");
+
+    let deleting_duration = Instant::now() - start_time;
+    on_event(
+        Arc::clone(&state),
+        IndexingEvent::Finished(deleting_duration),
+    )
+    .await;
+    Ok(())
 }

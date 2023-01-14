@@ -11,6 +11,7 @@ use elasticsearch::{Elasticsearch, SearchParts};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
+use tracing_unwrap::{OptionExt, ResultExt};
 use walkdir::WalkDir;
 
 /// Struct with file path and data to determine if file has been modified
@@ -116,8 +117,8 @@ impl FilesDiff {
                 .intersection(&new_hs)
                 .map(|x| {
                     (
-                        old_hs.get(x).unwrap().clone(),
-                        new_hs.get(x).unwrap().clone(),
+                        old_hs.get(x).unwrap_or_log().clone(),
+                        new_hs.get(x).unwrap_or_log().clone(),
                     )
                 })
                 .filter(|(x, y)| x.is_modified(y))
@@ -159,7 +160,7 @@ pub fn get_file_system_files_list(settings: &Settings) -> Vec<FileInfo> {
                 let file_info = FileInfo {
                     _id: None,
                     path: path.to_path_buf(),
-                    modified: metadata.modified().unwrap().into(),
+                    modified: metadata.modified().unwrap_or_log().into(),
                     size: metadata.len(),
                 };
 
@@ -208,7 +209,7 @@ pub async fn get_elasticsearch_files_list(
             .track_total_hits(false)
             .body(RequestBody {
                 _source: json!({
-                    "excludes": ["image_embedding"]
+                    "excludes": ["content", "text_embedding", "image_embedding"]
                 }),
                 query: json!({
                     "match_all": {}
@@ -225,18 +226,18 @@ pub async fn get_elasticsearch_files_list(
             .json()
             .await?;
 
-        let hits = response["hits"]["hits"].as_array().unwrap();
+        let hits = response["hits"]["hits"].as_array().unwrap_or_log();
         if hits.is_empty() {
             break;
         }
-        pit.id = response["pit_id"].as_str().unwrap().to_owned();
-        search_after = hits.last().unwrap()["sort"].as_array().cloned();
+        pit.id = response["pit_id"].as_str().unwrap_or_log().to_owned();
+        search_after = hits.last().unwrap_or_log()["sort"].as_array().cloned();
         let mut new_files: Vec<FileInfo> = hits
             .iter()
             .map(|x| {
                 let mut val = x["_source"].to_owned();
                 val["_id"] = x["_id"].to_owned();
-                serde_json::from_value::<FileES>(val).unwrap().into()
+                serde_json::from_value::<FileES>(val).unwrap_or_log().into()
             })
             .collect();
         files.append(&mut new_files);

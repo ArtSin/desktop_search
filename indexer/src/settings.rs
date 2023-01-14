@@ -37,7 +37,7 @@ pub async fn read_settings_file() -> InternalSettings {
 }
 
 async fn write_settings_file(state: Arc<ServerState>) -> std::io::Result<()> {
-    let s = toml::to_string(&*state.settings.read().await).unwrap();
+    let s = toml::to_string(&*state.settings.read().await).unwrap_or_log();
     tokio::fs::write(SETTINGS_FILE_PATH, s).await?;
     Ok(())
 }

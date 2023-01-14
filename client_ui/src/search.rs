@@ -41,13 +41,16 @@ struct PreviewData {
     content_type: String,
 }
 
-fn get_local_file_url<P: AsRef<Path>>(path: P, thumbnail: bool) -> Url {
+fn get_local_file_url<P: AsRef<Path>>(path: P, content_type: Option<&str>, thumbnail: bool) -> Url {
     let base = Url::parse(&web_sys::window().unwrap().location().origin().unwrap()).unwrap();
     let mut file_url = base.join("/file").unwrap();
     file_url
         .query_pairs_mut()
         .append_pair("path", &path.as_ref().to_string_lossy())
         .append_pair("thumbnail", &thumbnail.to_string());
+    if let Some(x) = content_type {
+        file_url.query_pairs_mut().append_pair("content_type", x);
+    }
     file_url
 }
 
@@ -252,7 +255,7 @@ pub fn Search<'a, G: Html>(
                             button(form="search", type="submit", disabled=*any_invalid.get()) { "Искать" }
                         }
                         (if !query_image_path.get().as_os_str().is_empty() {
-                            let img_url = get_local_file_url(&*query_image_path.get(), false);
+                            let img_url = get_local_file_url(&*query_image_path.get(), None, false);
                             view! { cx,
                                 div {
                                     img(src=img_url, id="query_image") {}
@@ -409,7 +412,7 @@ pub fn Search<'a, G: Html>(
 
             (if *display_preview.get() {
                 let content_type = preview_data.get().content_type.clone();
-                let object_url = get_local_file_url(&preview_data.get().path, false);
+                let object_url = get_local_file_url(&preview_data.get().path, Some(&content_type), false);
                 view! { cx,
                     aside(id="preview") {
                         button(form="search", type="button", on:click=hide_preview) { "✖" }

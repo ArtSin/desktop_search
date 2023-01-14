@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use common_lib::elasticsearch::{FileES, TextData};
+use tracing_unwrap::OptionExt;
 
 use crate::{embeddings::get_text_search_embedding, ServerState};
 
@@ -32,7 +33,7 @@ impl Parser for TextParser {
         let embedding = get_text_search_embedding(
             &state.reqwest_client,
             nnserver_url,
-            file.content.as_ref().unwrap(),
+            file.content.as_ref().unwrap_or_log(),
         )
         .await?;
 

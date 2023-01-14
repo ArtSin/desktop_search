@@ -10,6 +10,7 @@ use common_lib::{
 };
 use elasticsearch::{Elasticsearch, SearchParts};
 use serde_json::{json, Value};
+use tracing_unwrap::{OptionExt, ResultExt};
 use url::Url;
 use uuid::Uuid;
 
@@ -244,7 +245,7 @@ async fn get_request_body(
                 }));
             }
 
-            request_body.as_object_mut().unwrap().insert(
+            request_body.as_object_mut().unwrap_or_log().insert(
                 "query".to_owned(),
                 json!({
                     "bool": {
@@ -255,7 +256,7 @@ async fn get_request_body(
                 }),
             );
 
-            request_body.as_object_mut().unwrap().insert(
+            request_body.as_object_mut().unwrap_or_log().insert(
                 "highlight".to_owned(),
                 json!({
                     "pre_tags": ["<b>"],
@@ -303,7 +304,7 @@ async fn get_request_body(
     if !request_body_knn.is_empty() {
         request_body
             .as_object_mut()
-            .unwrap()
+            .unwrap_or_log()
             .insert("knn".to_owned(), Value::Array(request_body_knn));
     }
     Ok(request_body)
@@ -343,13 +344,14 @@ fn get_highlighted_optional_field(
 fn get_results(es_response_body: &Value) -> Vec<SearchResult> {
     es_response_body["hits"]["hits"]
         .as_array()
-        .unwrap()
+        .unwrap_or_log()
         .iter()
         .map(|val| {
-            let mut file_es: FileES = serde_json::from_value(val["_source"].clone()).unwrap();
-            file_es._id = Some(val["_id"].as_str().unwrap().to_owned());
+            let mut file_es: FileES =
+                serde_json::from_value(val["_source"].clone()).unwrap_or_log();
+            file_es._id = Some(val["_id"].as_str().unwrap_or_log().to_owned());
             let highlights = HighlightedFields {
-                path: get_highlighted_field(val, "path", file_es.path.to_str().unwrap()),
+                path: get_highlighted_field(val, "path", file_es.path.to_str().unwrap_or_log()),
                 hash: get_highlighted_field(val, "hash", &file_es.hash),
                 content: get_highlighted_optional_field(val, "content", file_es.content.as_deref()),
                 document_data: DocumentHighlightedFields {
@@ -376,7 +378,9 @@ fn get_results(es_response_body: &Value) -> Vec<SearchResult> {
 }
 
 fn get_pages(es_response_body: &Value, page: u32) -> Vec<PageType> {
-    let total_pages = (es_response_body["hits"]["total"]["value"].as_u64().unwrap() as u32
+    let total_pages = (es_response_body["hits"]["total"]["value"]
+        .as_u64()
+        .unwrap_or_log() as u32
         + RESULTS_PER_PAGE
         - 1)
         / RESULTS_PER_PAGE;

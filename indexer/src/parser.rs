@@ -28,7 +28,7 @@ pub trait Parser {
     ) -> anyhow::Result<()>;
 }
 
-#[derive(Default, Deserialize)]
+#[derive(Deserialize)]
 pub struct Metadata {
     #[serde(rename = "Content-Type")]
     pub content_type: String,
@@ -40,6 +40,17 @@ pub struct Metadata {
     /// Fields for document files
     #[serde(flatten)]
     pub document_data: DocumentMetadata,
+}
+
+impl Default for Metadata {
+    fn default() -> Self {
+        Self {
+            content_type: "application/octet-stream".to_owned(),
+            content: Default::default(),
+            image_data: Default::default(),
+            document_data: Default::default(),
+        }
+    }
 }
 
 #[serde_as]
@@ -93,10 +104,13 @@ async fn get_metadata(state: Arc<ServerState>, file: &mut FileES) -> anyhow::Res
 
 pub async fn parse_file(state: Arc<ServerState>, file: &mut FileES) -> anyhow::Result<()> {
     let mut metadata = get_metadata(Arc::clone(&state), file).await?;
-    let mut content_type_mime: Mime = metadata.content_type.parse().unwrap();
+    let mut content_type_mime: Mime = metadata.content_type.parse()?;
     if content_type_mime.type_() == mime::TEXT {
-        content_type_mime = mime_guess::from_path(&file.path).first_or_octet_stream();
-        metadata.content_type = content_type_mime.to_string();
+        let new_mime = mime_guess::from_path(&file.path).first_or_octet_stream();
+        if new_mime.type_() == mime::TEXT {
+            content_type_mime = new_mime;
+            metadata.content_type = content_type_mime.to_string();
+        }
     }
 
     file.content_type = metadata.content_type.clone();

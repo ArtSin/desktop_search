@@ -11,6 +11,10 @@ async fn index() -> Result<(), JsValue> {
     fetch_empty("/index", "PATCH", None::<&()>).await
 }
 
+async fn delete_index() -> Result<(), JsValue> {
+    fetch_empty("/index", "DELETE", None::<&()>).await
+}
+
 #[component(inline_props)]
 pub fn Status<'a, G: Html>(
     cx: Scope<'a>,
@@ -71,6 +75,24 @@ pub fn Status<'a, G: Html>(
                 Err(e) => {
                     status_dialog_state.set(StatusDialogState::Error(format!(
                         "❌ Ошибка индексирования: {:#?}",
+                        e,
+                    )));
+                }
+            }
+        })
+    };
+
+    let delete_index = move |_| {
+        spawn_local_scoped(cx, async move {
+            status_dialog_state.set(StatusDialogState::Loading);
+
+            match delete_index().await {
+                Ok(_) => {
+                    status_dialog_state.set(StatusDialogState::None);
+                }
+                Err(e) => {
+                    status_dialog_state.set(StatusDialogState::Error(format!(
+                        "❌ Ошибка очищения индекса: {:#?}",
                         e,
                     )));
                 }
@@ -162,6 +184,7 @@ pub fn Status<'a, G: Html>(
                     }
 
                     div(class="settings_buttons") {
+                        button(type="button", on:click=delete_index, disabled=*is_indexing.get()) { "Очистить индекс" }
                         button(type="submit", disabled=*is_indexing.get()) { "Индексировать" }
                     }
                 }

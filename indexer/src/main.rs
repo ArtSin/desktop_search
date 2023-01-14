@@ -76,7 +76,9 @@ async fn main() {
         )
         .route(
             "/index",
-            get(indexer::status::indexing_status).patch(indexer::index),
+            get(indexer::status::indexing_status)
+                .patch(indexer::index)
+                .delete(indexer::delete_index),
         )
         .route("/search", post(search::search))
         .route("/open_path", post(actions::open_path))
@@ -90,7 +92,7 @@ async fn main() {
             reqwest_client: reqwest::Client::builder()
                 .timeout(Duration::from_secs(10))
                 .build()
-                .unwrap(),
+                .unwrap_or_log(),
             indexing_status: RwLock::new(IndexingStatus::NotStarted),
             indexing_events: broadcast::channel(indexing_events_channel_capacity).0,
         }))
