@@ -190,6 +190,8 @@ fn get_es_request_must(search_request: &SearchRequest) -> Vec<Value> {
 }
 
 async fn get_request_body(
+    max_sentences: u32,
+    sentences_per_paragraph: u32,
     reqwest_client: &reqwest::Client,
     nnserver_url: Url,
     search_request: &SearchRequest,
@@ -218,8 +220,14 @@ async fn get_request_body(
             ..
         }) => {
             if text_search_enabled && !query.is_empty() {
-                let text_search_embedding =
-                    get_text_search_embedding(reqwest_client, nnserver_url.clone(), query).await?;
+                let text_search_embedding = get_text_search_embedding(
+                    max_sentences,
+                    sentences_per_paragraph,
+                    reqwest_client,
+                    nnserver_url.clone(),
+                    query,
+                )
+                .await?;
 
                 request_body_knn.push(json!({
                     "field": "text_embedding",
@@ -416,10 +424,23 @@ pub async fn search(
     State(state): State<Arc<ServerState>>,
     Json(search_request): Json<SearchRequest>,
 ) -> Result<Json<SearchResponse>, (StatusCode, String)> {
-    let nnserver_url = state.settings.read().await.other.nnserver_url.clone();
-    let es_request_body = get_request_body(&state.reqwest_client, nnserver_url, &search_request)
-        .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    let (max_sentences, sentences_per_paragraph, nnserver_url) = {
+        let tmp = state.settings.read().await;
+        (
+            tmp.other.max_sentences,
+            tmp.other.sentences_per_paragraph,
+            tmp.other.nnserver_url.clone(),
+        )
+    };
+    let es_request_body = get_request_body(
+        max_sentences,
+        sentences_per_paragraph,
+        &state.reqwest_client,
+        nnserver_url,
+        &search_request,
+    )
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
     let es_response_body = get_es_response(&state.es_client, search_request.page, es_request_body)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;

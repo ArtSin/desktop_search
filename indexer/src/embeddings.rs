@@ -50,21 +50,19 @@ pub async fn get_image_search_text_embedding(
 }
 
 pub async fn get_text_search_embedding(
+    max_sentences: u32,
+    sentences_per_paragraph: u32,
     reqwest_client: &reqwest::Client,
     mut nnserver_url: Url,
     text: &str,
 ) -> anyhow::Result<TextEmbedding> {
-    // TODO: make into settings
-    const MAX_SENTENCES: u32 = 20;
-    const SENTENCES_PER_PARAGRAPH: u32 = 4;
-
     nnserver_url.set_path("minilm/text");
     let req_builder = reqwest_client.post(nnserver_url);
     let embedding = req_builder
         .json(&json!({
             "text": text,
-            "max_sentences": MAX_SENTENCES,
-            "sentences_per_paragraph": SENTENCES_PER_PARAGRAPH
+            "max_sentences": max_sentences,
+            "sentences_per_paragraph": sentences_per_paragraph
         }))
         .send()
         .await?

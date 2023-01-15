@@ -15,6 +15,10 @@ const NNSERVER_BATCH_SIZE_MIN: usize = 1;
 const NNSERVER_BATCH_SIZE_MAX: usize = 256;
 const ELASTICSEARCH_BATCH_SIZE_MIN: usize = 1;
 const ELASTICSEARCH_BATCH_SIZE_MAX: usize = 1000;
+const MAX_SENTENCES_MIN: u32 = 1;
+const MAX_SENTENCES_MAX: u32 = 100;
+const SENTENCES_PER_PARAGRAPH_MIN: u32 = 1;
+const SENTENCES_PER_PARAGRAPH_MAX: u32 = 100;
 
 trait SettingsUi {
     fn get_elasticsearch_url_str(&self) -> String;
@@ -25,6 +29,8 @@ trait SettingsUi {
     fn get_max_file_size_str(&self) -> String;
     fn get_nnserver_batch_size_str(&self) -> String;
     fn get_elasticsearch_batch_size_str(&self) -> String;
+    fn get_max_sentences_str(&self) -> String;
+    fn get_sentences_per_paragraph_str(&self) -> String;
 
     fn valid_elasticsearch_url(elasticsearch_url_str: &str) -> bool;
     fn valid_tika_url(tika_url_str: &str) -> bool;
@@ -32,6 +38,8 @@ trait SettingsUi {
     fn valid_max_file_size(max_file_size_str: &str) -> bool;
     fn valid_nnserver_batch_size(nnserver_batch_size_str: &str) -> bool;
     fn valid_elasticsearch_batch_size(elasticsearch_batch_size_str: &str) -> bool;
+    fn valid_max_sentences(max_sentences_str: &str) -> bool;
+    fn valid_sentences_per_paragraph(sentences_per_paragraph_str: &str) -> bool;
 
     fn parse(
         elasticsearch_url_str: &str,
@@ -42,6 +50,8 @@ trait SettingsUi {
         max_file_size_str: &str,
         nnserver_batch_size_str: &str,
         elasticsearch_batch_size_str: &str,
+        max_sentences_str: &str,
+        sentences_per_paragraph_str: &str,
     ) -> Self;
 }
 
@@ -73,6 +83,12 @@ impl SettingsUi for Settings {
     fn get_elasticsearch_batch_size_str(&self) -> String {
         self.elasticsearch_batch_size.to_string()
     }
+    fn get_max_sentences_str(&self) -> String {
+        self.max_sentences.to_string()
+    }
+    fn get_sentences_per_paragraph_str(&self) -> String {
+        self.sentences_per_paragraph.to_string()
+    }
 
     fn valid_elasticsearch_url(elasticsearch_url_str: &str) -> bool {
         Url::parse(elasticsearch_url_str).is_ok()
@@ -100,6 +116,18 @@ impl SettingsUi for Settings {
             (ELASTICSEARCH_BATCH_SIZE_MIN..=ELASTICSEARCH_BATCH_SIZE_MAX).contains(&x)
         }) == Ok(true)
     }
+    fn valid_max_sentences(max_sentences_str: &str) -> bool {
+        max_sentences_str
+            .parse()
+            .map(|x: u32| (MAX_SENTENCES_MIN..=MAX_SENTENCES_MAX).contains(&x))
+            == Ok(true)
+    }
+    fn valid_sentences_per_paragraph(sentences_per_paragraph_str: &str) -> bool {
+        sentences_per_paragraph_str
+            .parse()
+            .map(|x: u32| (SENTENCES_PER_PARAGRAPH_MIN..=SENTENCES_PER_PARAGRAPH_MAX).contains(&x))
+            == Ok(true)
+    }
 
     fn parse(
         elasticsearch_url_str: &str,
@@ -110,6 +138,8 @@ impl SettingsUi for Settings {
         max_file_size_str: &str,
         nnserver_batch_size_str: &str,
         elasticsearch_batch_size_str: &str,
+        max_sentences_str: &str,
+        sentences_per_paragraph_str: &str,
     ) -> Self {
         Self {
             elasticsearch_url: Url::parse(elasticsearch_url_str).unwrap(),
@@ -123,6 +153,8 @@ impl SettingsUi for Settings {
             max_file_size: (max_file_size_str.parse::<f64>().unwrap() * 1024.0 * 1024.0) as u64,
             nnserver_batch_size: nnserver_batch_size_str.parse().unwrap(),
             elasticsearch_batch_size: elasticsearch_batch_size_str.parse().unwrap(),
+            max_sentences: max_sentences_str.parse().unwrap(),
+            sentences_per_paragraph: sentences_per_paragraph_str.parse().unwrap(),
         }
     }
 }
@@ -152,6 +184,9 @@ pub fn Settings<'a, G: Html>(
     let nnserver_batch_size_str = create_signal(cx, settings.get().get_nnserver_batch_size_str());
     let elasticsearch_batch_size_str =
         create_signal(cx, settings.get().get_elasticsearch_batch_size_str());
+    let max_sentences_str = create_signal(cx, settings.get().get_max_sentences_str());
+    let sentences_per_paragraph_str =
+        create_signal(cx, settings.get().get_sentences_per_paragraph_str());
 
     // Validation values for settings
     let elasticsearch_url_valid = create_memo(cx, || {
@@ -169,6 +204,12 @@ pub fn Settings<'a, G: Html>(
     let elasticsearch_batch_size_valid = create_memo(cx, || {
         Settings::valid_elasticsearch_batch_size(&elasticsearch_batch_size_str.get())
     });
+    let max_sentences_valid = create_memo(cx, || {
+        Settings::valid_max_sentences(&max_sentences_str.get())
+    });
+    let sentences_per_paragraph_valid = create_memo(cx, || {
+        Settings::valid_sentences_per_paragraph(&sentences_per_paragraph_str.get())
+    });
     let any_invalid = create_memo(cx, || {
         !*elasticsearch_url_valid.get()
             || !*tika_url_valid.get()
@@ -176,6 +217,8 @@ pub fn Settings<'a, G: Html>(
             || !*max_file_size_valid.get()
             || !*nnserver_batch_size_valid.get()
             || !*elasticsearch_batch_size_valid.get()
+            || !*max_sentences_valid.get()
+            || !*sentences_per_paragraph_valid.get()
     });
 
     // Set input values from settings when they are updated (on load from server or reset)
@@ -188,6 +231,8 @@ pub fn Settings<'a, G: Html>(
         max_file_size_str.set(settings.get().get_max_file_size_str());
         nnserver_batch_size_str.set(settings.get().get_nnserver_batch_size_str());
         elasticsearch_batch_size_str.set(settings.get().get_elasticsearch_batch_size_str());
+        max_sentences_str.set(settings.get().get_max_sentences_str());
+        sentences_per_paragraph_str.set(settings.get().get_sentences_per_paragraph_str());
     });
     let reset_settings = |_| {
         settings.trigger_subscribers();
@@ -225,6 +270,8 @@ pub fn Settings<'a, G: Html>(
                 &max_file_size_str.get(),
                 &nnserver_batch_size_str.get(),
                 &elasticsearch_batch_size_str.get(),
+                &max_sentences_str.get(),
+                &sentences_per_paragraph_str.get(),
             );
 
             if let Err(e) = put_settings(&new_settings).await {
@@ -270,6 +317,10 @@ pub fn Settings<'a, G: Html>(
                             value=nnserver_batch_size_str, valid=nnserver_batch_size_valid)
                         NumberSetting(id="elasticsearch_batch_size", label="Количество отправляемых в Elasticsearch изменений за раз: ",
                             value=elasticsearch_batch_size_str, valid=elasticsearch_batch_size_valid)
+                        NumberSetting(id="max_sentences", label="Максимальное количество предложений, обрабатываемых нейронной сетью: ",
+                            value=max_sentences_str, valid=max_sentences_valid)
+                        NumberSetting(id="sentences_per_paragraph", label="Количество предложений, обрабатываемых за один раз: ",
+                            value=sentences_per_paragraph_str, valid=sentences_per_paragraph_valid)
                     }
 
                     div(class="settings_buttons") {

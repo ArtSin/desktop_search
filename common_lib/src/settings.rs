@@ -14,6 +14,8 @@ pub struct Settings {
     pub max_file_size: u64,
     pub nnserver_batch_size: usize,
     pub elasticsearch_batch_size: usize,
+    pub max_sentences: u32,
+    pub sentences_per_paragraph: u32,
 }
 
 impl Default for Settings {
@@ -27,6 +29,8 @@ impl Default for Settings {
             max_file_size: 50 * 1024 * 1024, // 50 MiB
             nnserver_batch_size: 32,
             elasticsearch_batch_size: 100,
+            max_sentences: 20,
+            sentences_per_paragraph: 4,
         }
     }
 }

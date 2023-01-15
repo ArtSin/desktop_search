@@ -29,8 +29,17 @@ impl Parser for TextParser {
             file.path.display()
         );
 
-        let nnserver_url = state.settings.read().await.other.nnserver_url.clone();
+        let (max_sentences, sentences_per_paragraph, nnserver_url) = {
+            let tmp = state.settings.read().await;
+            (
+                tmp.other.max_sentences,
+                tmp.other.sentences_per_paragraph,
+                tmp.other.nnserver_url.clone(),
+            )
+        };
         let embedding = get_text_search_embedding(
+            max_sentences,
+            sentences_per_paragraph,
             &state.reqwest_client,
             nnserver_url,
             file.content.as_ref().unwrap_or_log(),
