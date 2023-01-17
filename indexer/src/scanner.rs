@@ -1,6 +1,6 @@
 use std::{cmp::Eq, collections::HashSet, hash::Hash, path::PathBuf};
 
-use chrono::{DateTime, Utc};
+use chrono::{serde::ts_seconds, DateTime, Utc};
 use common_lib::{
     elasticsearch::{
         FileES, ELASTICSEARCH_INDEX, ELASTICSEARCH_MAX_SIZE, ELASTICSEARCH_PIT_KEEP_ALIVE,
@@ -15,43 +15,41 @@ use tracing_unwrap::{OptionExt, ResultExt};
 use walkdir::WalkDir;
 
 /// Struct with file path and data to determine if file has been modified
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct FileInfo {
     /// ID of document (in Elasticsearch)
     pub _id: Option<String>,
     /// Absolute path to file
     pub path: PathBuf,
     /// Last modification time
+    #[serde(with = "ts_seconds")]
     pub modified: DateTime<Utc>,
     /// Size of file in bytes
     pub size: u64,
-}
-
-impl From<FileES> for FileInfo {
-    fn from(x: FileES) -> Self {
-        Self {
-            _id: x._id,
-            path: x.path,
-            modified: x.modified,
-            size: x.size,
-        }
-    }
+    /// Process contents or include only basic metadata
+    #[serde(default = "FileInfo::default_process_contents")]
+    pub process_contents: bool,
 }
 
 impl TryFrom<FileInfo> for FileES {
     type Error = std::io::Error;
 
     fn try_from(x: FileInfo) -> Result<Self, Self::Error> {
-        tracing::debug!("Calculating hash of file: {}", x.path.display());
-        let file = match std::fs::read(&x.path) {
-            Ok(x) => x,
-            Err(e) => {
-                tracing::error!("Error reading file: {}", e);
-                return Err(e);
-            }
-        };
-        let hash_bytes: [u8; 32] = Sha256::digest(file).into();
-        let hash = base16ct::lower::encode_string(&hash_bytes);
+        let hash = x
+            .process_contents
+            .then(|| {
+                tracing::debug!("Calculating hash of file: {}", x.path.display());
+                let file = match std::fs::read(&x.path) {
+                    Ok(x) => x,
+                    Err(e) => {
+                        tracing::error!("Error reading file: {}", e);
+                        return Err(e);
+                    }
+                };
+                let hash_bytes: [u8; 32] = Sha256::digest(file).into();
+                Ok(base16ct::lower::encode_string(&hash_bytes))
+            })
+            .transpose()?;
 
         Ok(Self {
             _id: x._id,
@@ -71,9 +69,19 @@ impl TryFrom<FileInfo> for FileES {
 }
 
 impl FileInfo {
-    /// Can file be indexed with current settings
-    fn can_index(&self, settings: &Settings) -> bool {
-        self.size <= settings.max_file_size
+    /// Create file info and check if file contents can be processed with current settings
+    fn new(path: PathBuf, modified: DateTime<Utc>, size: u64, settings: &Settings) -> Self {
+        Self {
+            _id: None,
+            path,
+            modified,
+            size,
+            process_contents: size <= settings.max_file_size,
+        }
+    }
+
+    fn default_process_contents() -> bool {
+        true
     }
 
     /// Checks if file was modified.
@@ -157,14 +165,12 @@ pub fn get_file_system_files_list(settings: &Settings) -> Vec<FileInfo> {
                     }
                 };
 
-                let file_info = FileInfo {
-                    _id: None,
-                    path: path.to_path_buf(),
-                    modified: metadata.modified().unwrap_or_log().into(),
-                    size: metadata.len(),
-                };
-
-                file_info.can_index(settings).then_some(file_info)
+                Some(FileInfo::new(
+                    path.to_path_buf(),
+                    metadata.modified().unwrap_or_log().into(),
+                    metadata.len(),
+                    settings,
+                ))
             })
         })
         .collect()
@@ -209,7 +215,7 @@ pub async fn get_elasticsearch_files_list(
             .track_total_hits(false)
             .body(RequestBody {
                 _source: json!({
-                    "excludes": ["content", "text_embedding", "image_embedding"]
+                    "includes": ["path", "modified", "size"]
                 }),
                 query: json!({
                     "match_all": {}
@@ -237,7 +243,7 @@ pub async fn get_elasticsearch_files_list(
             .map(|x| {
                 let mut val = x["_source"].to_owned();
                 val["_id"] = x["_id"].to_owned();
-                serde_json::from_value::<FileES>(val).unwrap_or_log().into()
+                serde_json::from_value(val).unwrap_or_log()
             })
             .collect();
         files.append(&mut new_files);

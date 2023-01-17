@@ -45,6 +45,7 @@ trait SettingsUi {
     fn valid_sentences_per_paragraph(sentences_per_paragraph_str: &str) -> bool;
     fn valid_knn_candidates_multiplier(knn_candidates_multiplier_str: &str) -> bool;
 
+    #[allow(clippy::too_many_arguments)]
     fn parse(
         elasticsearch_url_str: &str,
         tika_url_str: &str,

@@ -87,10 +87,13 @@ async fn add_new(state: Arc<ServerState>, file: FileInfo) -> anyhow::Result<(Val
     tracing::debug!("Add file: {}", file.path.display());
 
     let action = json!({"index": {}});
+    let process_contents = file.process_contents;
     let mut file_es: FileES = file.try_into().unwrap_or_log();
-    parse_file(state, &mut file_es)
-        .await
-        .map_err(|e| e.context(format!("Error parsing file: {}", file_es.path.display())))?;
+    if process_contents {
+        parse_file(state, &mut file_es)
+            .await
+            .map_err(|e| e.context(format!("Error parsing file: {}", file_es.path.display())))?;
+    }
     let data = serde_json::to_value(file_es).unwrap_or_log();
     Ok((action, data))
 }
@@ -103,13 +106,16 @@ async fn update_modified(
     tracing::debug!("Update file: {}", new_file.path.display());
 
     let action = json!({"index": { "_id": old_file._id.unwrap_or_log() }});
+    let process_contents = new_file.process_contents;
     let mut new_file_es: FileES = new_file.try_into().unwrap_or_log();
-    parse_file(state, &mut new_file_es).await.map_err(|e| {
-        e.context(format!(
-            "Error parsing file: {}",
-            new_file_es.path.display()
-        ))
-    })?;
+    if process_contents {
+        parse_file(state, &mut new_file_es).await.map_err(|e| {
+            e.context(format!(
+                "Error parsing file: {}",
+                new_file_es.path.display()
+            ))
+        })?;
+    }
     let data = serde_json::to_value(new_file_es).unwrap_or_log();
     Ok((action, data))
 }

@@ -383,7 +383,7 @@ fn get_results(es_response_body: &Value) -> Vec<SearchResult> {
             file_es._id = Some(val["_id"].as_str().unwrap_or_log().to_owned());
             let highlights = HighlightedFields {
                 path: get_highlighted_field(val, "path", file_es.path.to_str().unwrap_or_log()),
-                hash: get_highlighted_field(val, "hash", &file_es.hash),
+                hash: get_highlighted_optional_field(val, "hash", file_es.hash.as_deref()),
                 content: get_highlighted_optional_field(val, "content", file_es.content.as_deref()),
                 document_data: DocumentHighlightedFields {
                     title: get_highlighted_optional_field(

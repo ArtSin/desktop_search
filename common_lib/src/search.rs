@@ -98,7 +98,7 @@ pub enum ContentTypeRequestItem {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HighlightedFields {
     pub path: String,
-    pub hash: String,
+    pub hash: Option<String>,
     pub content: Option<String>,
     /// Fields for document files
     pub document_data: DocumentHighlightedFields,

@@ -31,7 +31,7 @@ pub(super) fn SearchResults<'a, G: Html>(
                 let content_type = item.file.content_type.clone();
 
                 let highlighted_path = "Полный путь: ".to_owned() + &item.highlights.path;
-                let highlighted_hash = "Хеш SHA-256: ".to_owned() + &item.highlights.hash;
+                let highlighted_hash = item.highlights.hash.as_ref().map(|x| "Хеш SHA-256: ".to_owned() + x);
 
                 let show_preview = move |_| {
                     preview_data.set(PreviewData {
@@ -103,7 +103,13 @@ pub(super) fn SearchResults<'a, G: Html>(
                                 "Размер (МиБ): "
                                 (format!("{:.4}", (item.file.size as f64) / 1024.0 / 1024.0))
                             }
-                            p(style="overflow-wrap: anywhere;", dangerously_set_inner_html=&highlighted_hash)
+                            (if let Some(highlighted_hash) = highlighted_hash.clone() {
+                                view! { cx,
+                                    p(style="overflow-wrap: anywhere;", dangerously_set_inner_html=&highlighted_hash)
+                                }
+                            } else {
+                                view! { cx, }
+                            })
                         }
 
                         (if item.file.image_data.any_metadata() {

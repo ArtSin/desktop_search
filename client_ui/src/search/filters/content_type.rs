@@ -71,7 +71,7 @@ pub struct ContentTypeFilterProps<'a> {
     pub disabled: &'a Signal<bool>,
 }
 
-pub fn content_type_filter_items<'a>(cx: Scope<'a>) -> &'a ReadSignal<Vec<ContentTypeItem<'a>>> {
+pub fn content_type_filter_items(cx: Scope) -> &ReadSignal<Vec<ContentTypeItem<'_>>> {
     create_signal(
         cx,
         vec![

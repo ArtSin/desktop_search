@@ -29,7 +29,7 @@ pub struct FileES {
     /// Size of file in bytes
     pub size: u64,
     /// Base16 representation of SHA-256 hash of file
-    pub hash: String,
+    pub hash: Option<String>,
     /// MIME content type
     pub content_type: String,
     /// Type part of content type
