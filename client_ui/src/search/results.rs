@@ -68,7 +68,7 @@ pub(super) fn SearchResults<'a, G: Html>(
                         (if item.file.content_type.starts_with("image")
                                 || item.file.content_type.starts_with("video")
                                 || item.file.content_type.starts_with("audio") {
-                            let img_url = get_local_file_url(&path, None, true);
+                            let img_url = get_local_file_url(&path, Some(&item.file.content_type), true);
                             view! { cx,
                                 img(src=(img_url), onerror="this.style.display='none'") {}
                             }

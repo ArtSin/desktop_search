@@ -398,7 +398,12 @@ fn get_results(es_response_body: &Value) -> Vec<SearchResult> {
                     ),
                 },
             };
+
+            // Don't send big fields to client
             file_es.content = None;
+            file_es.text_data.text_embedding = None;
+            file_es.image_data.image_embedding = None;
+
             SearchResult {
                 file: file_es,
                 highlights,
