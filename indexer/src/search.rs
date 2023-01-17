@@ -194,17 +194,11 @@ async fn get_request_body(
     sentences_per_paragraph: u32,
     reqwest_client: &reqwest::Client,
     nnserver_url: Url,
+    knn_candidates_multiplier: u32,
     search_request: &SearchRequest,
 ) -> anyhow::Result<Value> {
-    // TODO: make into settings
-    const KNN_CANDIDATES_MULTIPLIER: u32 = 10;
-
     let mut request_body = Value::Object(serde_json::Map::new());
     let mut request_body_knn = Vec::new();
-    let num_candidates = min(
-        RESULTS_PER_PAGE * KNN_CANDIDATES_MULTIPLIER,
-        ELASTICSEARCH_MAX_SIZE as u32,
-    );
 
     let es_request_must = get_es_request_must(search_request);
     let es_request_filter = get_es_request_filter(search_request);
@@ -214,6 +208,8 @@ async fn get_request_body(
             ref query,
             text_search_enabled,
             image_search_enabled,
+            text_search_pages,
+            image_search_pages,
             query_coeff,
             text_search_coeff,
             image_search_coeff,
@@ -229,10 +225,18 @@ async fn get_request_body(
                 )
                 .await?;
 
+                let k = min(
+                    RESULTS_PER_PAGE * text_search_pages,
+                    ELASTICSEARCH_MAX_SIZE as u32,
+                );
+                let num_candidates = min(
+                    RESULTS_PER_PAGE * text_search_pages * knn_candidates_multiplier,
+                    ELASTICSEARCH_MAX_SIZE as u32,
+                );
                 request_body_knn.push(json!({
                     "field": "text_embedding",
                     "query_vector": text_search_embedding.embedding,
-                    "k": RESULTS_PER_PAGE,
+                    "k": k,
                     "num_candidates": num_candidates,
                     "filter": es_request_filter,
                     "boost": text_search_coeff
@@ -243,10 +247,18 @@ async fn get_request_body(
                 let image_search_text_embedding =
                     get_image_search_text_embedding(reqwest_client, nnserver_url, query).await?;
 
+                let k = min(
+                    RESULTS_PER_PAGE * image_search_pages,
+                    ELASTICSEARCH_MAX_SIZE as u32,
+                );
+                let num_candidates = min(
+                    RESULTS_PER_PAGE * image_search_pages * knn_candidates_multiplier,
+                    ELASTICSEARCH_MAX_SIZE as u32,
+                );
                 request_body_knn.push(json!({
                     "field": "image_embedding",
                     "query_vector": image_search_text_embedding.embedding,
-                    "k": RESULTS_PER_PAGE,
+                    "k": k,
                     "num_candidates": num_candidates,
                     "filter": es_request_filter,
                     "boost": image_search_coeff
@@ -292,17 +304,28 @@ async fn get_request_body(
                 }),
             );
         }
-        QueryType::Image(ImageQuery { ref image_path }) => {
+        QueryType::Image(ImageQuery {
+            ref image_path,
+            image_search_pages,
+        }) => {
             let image_search_image_embedding =
                 get_image_search_image_embedding(reqwest_client, nnserver_url, image_path).await?;
             let embedding = image_search_image_embedding
                 .embedding
                 .ok_or_else(|| anyhow::anyhow!("Incorrect image"))?;
 
+            let k = min(
+                RESULTS_PER_PAGE * image_search_pages,
+                ELASTICSEARCH_MAX_SIZE as u32,
+            );
+            let num_candidates = min(
+                RESULTS_PER_PAGE * image_search_pages * knn_candidates_multiplier,
+                ELASTICSEARCH_MAX_SIZE as u32,
+            );
             request_body_knn.push(json!({
                 "field": "image_embedding",
                 "query_vector": embedding,
-                "k": RESULTS_PER_PAGE,
+                "k": k,
                 "num_candidates": num_candidates,
                 "filter": es_request_filter
             }));
@@ -424,12 +447,13 @@ pub async fn search(
     State(state): State<Arc<ServerState>>,
     Json(search_request): Json<SearchRequest>,
 ) -> Result<Json<SearchResponse>, (StatusCode, String)> {
-    let (max_sentences, sentences_per_paragraph, nnserver_url) = {
+    let (max_sentences, sentences_per_paragraph, nnserver_url, knn_candidates_multiplier) = {
         let tmp = state.settings.read().await;
         (
             tmp.other.max_sentences,
             tmp.other.sentences_per_paragraph,
             tmp.other.nnserver_url.clone(),
+            tmp.other.knn_candidates_multiplier,
         )
     };
     let es_request_body = get_request_body(
@@ -437,6 +461,7 @@ pub async fn search(
         sentences_per_paragraph,
         &state.reqwest_client,
         nnserver_url,
+        knn_candidates_multiplier,
         &search_request,
     )
     .await

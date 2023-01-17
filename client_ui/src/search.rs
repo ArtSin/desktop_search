@@ -77,6 +77,8 @@ pub fn Search<'a, G: Html>(
     let content_enabled = create_signal(cx, true);
     let text_search_enabled = create_signal(cx, true);
     let image_search_enabled = create_signal(cx, true);
+    let text_search_pages = create_signal(cx, 1);
+    let image_search_pages = create_signal(cx, 1);
     let query_coeff = create_signal(cx, 1.0);
     let text_search_coeff = create_signal(cx, 2.0);
     let image_search_coeff = create_signal(cx, 2.0);
@@ -174,12 +176,15 @@ pub fn Search<'a, G: Html>(
                     content_enabled: *content_enabled.get(),
                     text_search_enabled: *text_search_enabled.get(),
                     image_search_enabled: *image_search_enabled.get(),
+                    text_search_pages: *text_search_pages.get(),
+                    image_search_pages: *image_search_pages.get(),
                     query_coeff: *query_coeff.get(),
                     text_search_coeff: *text_search_coeff.get(),
                     image_search_coeff: *image_search_coeff.get(),
                 }),
                 QueryType::Image => common_lib::search::QueryType::Image(ImageQuery {
                     image_path: (*query_image_path.get()).clone(),
+                    image_search_pages: *image_search_pages.get(),
                 }),
             };
             let search_request = SearchRequest {
@@ -291,6 +296,15 @@ pub fn Search<'a, G: Html>(
                                 }
 
                                 details {
+                                    summary { "Количество страниц семантического поиска" }
+
+                                    RangeWidget(legend="По тексту", id="text_search_pages",
+                                        min=1, max=20, step=1, value=text_search_pages)
+                                    RangeWidget(legend="По изображениям", id="image_search_pages",
+                                        min=1, max=20, step=1, value=image_search_pages)
+                                }
+
+                                details {
                                     summary { "Коэффициенты поиска" }
 
                                     RangeWidget(legend="По содержимому", id="query_coeff",
@@ -303,7 +317,14 @@ pub fn Search<'a, G: Html>(
                             }
                         }
                         QueryType::Image => {
-                            view! { cx, }
+                            view! { cx,
+                                details {
+                                    summary { "Количество страниц семантического поиска" }
+
+                                    RangeWidget(legend="По изображениям", id="image_search_pages",
+                                        min=1, max=20, step=1, value=image_search_pages)
+                                }
+                            }
                         }
                     })
 

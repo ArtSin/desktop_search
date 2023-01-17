@@ -38,6 +38,8 @@ pub struct TextQuery {
     pub content_enabled: bool,
     pub text_search_enabled: bool,
     pub image_search_enabled: bool,
+    pub text_search_pages: u32,
+    pub image_search_pages: u32,
     pub query_coeff: f64,
     pub text_search_coeff: f64,
     pub image_search_coeff: f64,
@@ -46,6 +48,7 @@ pub struct TextQuery {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ImageQuery {
     pub image_path: PathBuf,
+    pub image_search_pages: u32,
 }
 
 #[skip_serializing_none]

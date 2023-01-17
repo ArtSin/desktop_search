@@ -16,6 +16,7 @@ pub struct Settings {
     pub elasticsearch_batch_size: usize,
     pub max_sentences: u32,
     pub sentences_per_paragraph: u32,
+    pub knn_candidates_multiplier: u32,
 }
 
 impl Default for Settings {
@@ -31,6 +32,7 @@ impl Default for Settings {
             elasticsearch_batch_size: 100,
             max_sentences: 20,
             sentences_per_paragraph: 4,
+            knn_candidates_multiplier: 10,
         }
     }
 }
