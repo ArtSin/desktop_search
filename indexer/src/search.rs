@@ -22,7 +22,7 @@ use crate::{
     ServerState,
 };
 
-use self::query::{range, simple_query_string, terms};
+use self::query::{range, simple_query_string, suggest, terms};
 
 const RESULTS_PER_PAGE: u32 = 20;
 const ADJACENT_PAGES: u32 = 3;
@@ -303,6 +303,15 @@ async fn get_request_body(
                     }
                 }),
             );
+
+            request_body.as_object_mut().unwrap_or_log().insert(
+                "suggest".to_owned(),
+                suggest(
+                    query.clone(),
+                    "content.shingles",
+                    &["content.shingles", "path.shingles"],
+                ),
+            );
         }
         QueryType::Image(ImageQuery {
             ref image_path,
@@ -448,6 +457,15 @@ fn get_pages(es_response_body: &Value, page: u32) -> Vec<PageType> {
     pages
 }
 
+fn get_suggestion(es_response_body: &Value) -> Option<(String, String)> {
+    let suggest_json = &es_response_body["suggest"]["simple_phrase"][0]["options"][0];
+    suggest_json["highlighted"].as_str().and_then(|highlight| {
+        suggest_json["text"]
+            .as_str()
+            .map(|text| (highlight.to_owned(), text.to_owned()))
+    })
+}
+
 pub async fn search(
     State(state): State<Arc<ServerState>>,
     Json(search_request): Json<SearchRequest>,
@@ -476,7 +494,12 @@ pub async fn search(
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
     let results = get_results(&es_response_body);
     let pages = get_pages(&es_response_body, search_request.page);
-    Ok(Json(SearchResponse { results, pages }))
+    let suggestion = get_suggestion(&es_response_body);
+    Ok(Json(SearchResponse {
+        results,
+        pages,
+        suggestion,
+    }))
 }
 
 mod query {
@@ -534,26 +557,35 @@ mod query {
         })
     }
 
-    // pub fn suggest(query: Option<String>, field: &str) -> Value {
-    //     json!({
-    //         "text": query.unwrap_or_else(|| "*".to_owned()),
-    //         "simple_phrase": {
-    //             "phrase": {
-    //                 "field": field,
-    //                 "size": 1,
-    //                 "gram_size": 3,
-    //                 "direct_generator": [
-    //                     {
-    //                         "field": field,
-    //                         "suggest_mode": "missing"
-    //                     }
-    //                 ],
-    //                 "highlight": {
-    //                     "pre_tag": "<i>",
-    //                     "post_tag": "</i>"
-    //                 }
-    //             }
-    //         }
-    //     })
-    // }
+    pub fn suggest(mut query: String, main_field: &str, all_fields: &[&str]) -> Value {
+        if query.is_empty() {
+            query = "*".to_owned();
+        }
+
+        let generators: Vec<_> = all_fields
+            .iter()
+            .map(|x| {
+                json!({
+                    "field": x,
+                    "suggest_mode": "missing"
+                })
+            })
+            .collect();
+
+        json!({
+            "text": query,
+            "simple_phrase": {
+                "phrase": {
+                    "field": main_field,
+                    "size": 1,
+                    "gram_size": 3,
+                    "direct_generator": generators,
+                    "highlight": {
+                        "pre_tag": "<i>",
+                        "post_tag": "</i>"
+                    }
+                }
+            }
+        })
+    }
 }

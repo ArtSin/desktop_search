@@ -140,4 +140,5 @@ pub enum PageType {
 pub struct SearchResponse {
     pub results: Vec<SearchResult>,
     pub pages: Vec<PageType>,
+    pub suggestion: Option<(String, String)>,
 }

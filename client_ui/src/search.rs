@@ -137,6 +137,7 @@ pub fn Search<'a, G: Html>(
 
     let search_results = create_signal(cx, Vec::new());
     let pages = create_signal(cx, Vec::new());
+    let suggestion = create_signal(cx, None);
 
     let toggle_filters = move |_| {
         display_filters.set(!*display_filters.get());
@@ -224,6 +225,7 @@ pub fn Search<'a, G: Html>(
                 Ok(x) => {
                     search_results.set(x.results);
                     pages.set(x.pages);
+                    suggestion.set(x.suggestion);
                     status_dialog_state.set(StatusDialogState::None);
                     window().unwrap().scroll_to_with_x_and_y(0.0, 0.0);
                 }
@@ -390,6 +392,22 @@ pub fn Search<'a, G: Html>(
             }
 
             main {
+                (if let Some((highlight, text)) = (*suggestion.get()).clone() {
+                    let change_query = move |e| {
+                        query.set(text.clone());
+                        search_without_page(e);
+                    };
+
+                    view! { cx,
+                        h3 {
+                            "Возможный запрос: "
+                            a(on:click=change_query, href="javascript:void(0);",
+                                dangerously_set_inner_html=&highlight)
+                        }
+                    }
+                } else {
+                    view! { cx, }
+                })
                 SearchResults(search_results=search_results, display_preview=display_preview,
                     preview_data=preview_data, status_dialog_state=status_dialog_state)
 

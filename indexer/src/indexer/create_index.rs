@@ -28,6 +28,12 @@ pub async fn create_index(es_client: &Elasticsearch) -> Result<(), elasticsearch
             "settings": {
                 "index": {
                     "analysis": {
+                        "char_filter": {
+                            "path_char_filter": {
+                                "type": "mapping",
+                                "mappings": ["_ => -", ". => -"]
+                            }
+                        },
                         "filter": {
                             "english_stemmer": {
                                 "type": "stemmer",
@@ -44,6 +50,11 @@ pub async fn create_index(es_client: &Elasticsearch) -> Result<(), elasticsearch
                             "russian_stop": {
                                 "type": "stop",
                                 "stopwords": "_russian_"
+                            },
+                            "shingles": {
+                                "type": "shingle",
+                                "min_shingle_size": 2,
+                                "max_shingle_size": 3
                             }
                         },
                         "analyzer": {
@@ -58,13 +69,31 @@ pub async fn create_index(es_client: &Elasticsearch) -> Result<(), elasticsearch
                                 ]
                             },
                             "path_en_ru_analyzer": {
-                                "tokenizer": "letter",
+                                "char_filter": "path_char_filter",
+                                "tokenizer": "standard",
                                 "filter": [
                                     "lowercase",
                                     "english_stemmer",
-                                    "russian_stemmer"
+                                    "russian_stemmer",
+                                    "english_stop",
+                                    "russian_stop"
                                 ]
-                            }
+                            },
+                            "en_ru_analyzer_shingles": {
+                                "tokenizer": "standard",
+                                "filter": [
+                                    "lowercase",
+                                    "shingles"
+                                ]
+                            },
+                            "path_en_ru_analyzer_shingles": {
+                                "char_filter": "path_char_filter",
+                                "tokenizer": "standard",
+                                "filter": [
+                                    "lowercase",
+                                    "shingles"
+                                ]
+                            },
                         }
                     }
                 }
@@ -73,7 +102,13 @@ pub async fn create_index(es_client: &Elasticsearch) -> Result<(), elasticsearch
                 "properties": {
                     "path": {
                         "type": "text",
-                        "analyzer": "path_en_ru_analyzer"
+                        "analyzer": "path_en_ru_analyzer",
+                        "fields": {
+                            "shingles": {
+                                "type": "text",
+                                "analyzer": "path_en_ru_analyzer_shingles"
+                            }
+                        }
                     },
                     "modified": {
                         "type": "long"
@@ -95,7 +130,13 @@ pub async fn create_index(es_client: &Elasticsearch) -> Result<(), elasticsearch
                     },
                     "content": {
                         "type": "text",
-                        "analyzer": "en_ru_analyzer"
+                        "analyzer": "en_ru_analyzer",
+                        "fields": {
+                            "shingles": {
+                                "type": "text",
+                                "analyzer": "en_ru_analyzer_shingles"
+                            }
+                        }
                     },
 
                     "text_embedding": {
