@@ -163,7 +163,7 @@ impl SettingsUi for Settings {
             open_on_start,
             indexing_directories: indexing_directories_dir_items
                 .iter()
-                .map(|f| f.path.clone())
+                .map(|f| f.dir.clone())
                 .collect(),
             max_file_size: (max_file_size_str.parse::<f64>().unwrap() * 1024.0 * 1024.0) as u64,
             nnserver_batch_size: nnserver_batch_size_str.parse().unwrap(),

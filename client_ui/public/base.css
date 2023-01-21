@@ -153,6 +153,11 @@ div.setting>input {
     flex-grow: 1;
 }
 
+div.setting>p {
+    padding-bottom: 6px;
+    margin: 0.5em;
+}
+
 div.checkbox_setting {
     display: flex;
     align-items: center;

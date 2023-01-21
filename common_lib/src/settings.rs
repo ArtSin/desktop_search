@@ -10,13 +10,13 @@ pub struct Settings {
     pub tika_url: Url,
     pub nnserver_url: Url,
     pub open_on_start: bool,
-    pub indexing_directories: Vec<PathBuf>,
     pub max_file_size: u64,
     pub nnserver_batch_size: usize,
     pub elasticsearch_batch_size: usize,
     pub max_sentences: u32,
     pub sentences_per_paragraph: u32,
     pub knn_candidates_multiplier: u32,
+    pub indexing_directories: Vec<IndexingDirectory>,
 }
 
 impl Default for Settings {
@@ -35,4 +35,10 @@ impl Default for Settings {
             knn_candidates_multiplier: 10,
         }
     }
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct IndexingDirectory {
+    pub path: PathBuf,
+    pub exclude: bool,
 }

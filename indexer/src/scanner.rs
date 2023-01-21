@@ -138,40 +138,52 @@ impl FilesDiff {
 /// Recursively iterates list of directories and returns indexable files.
 /// Inaccessible files are skipped
 pub fn get_file_system_files_list(settings: &Settings) -> Vec<FileInfo> {
+    let indexing_directories_hs: HashSet<_> = settings
+        .indexing_directories
+        .iter()
+        .map(|x| x.path.as_path())
+        .collect();
+
     settings
         .indexing_directories
         .iter()
+        .filter(|dir| !dir.exclude)
         .flat_map(|dir| {
-            WalkDir::new(dir).into_iter().filter_map(|entry_res| {
-                let entry = match entry_res {
-                    Ok(x) => x,
-                    Err(e) => {
-                        tracing::error!("Error while scanning file system: {}", e);
+            WalkDir::new(&dir.path)
+                .into_iter()
+                .filter_entry(|e| {
+                    e.path() == dir.path || !indexing_directories_hs.contains(e.path())
+                })
+                .filter_map(|entry_res| {
+                    let entry = match entry_res {
+                        Ok(x) => x,
+                        Err(e) => {
+                            tracing::error!("Error while scanning file system: {}", e);
+                            return None;
+                        }
+                    };
+
+                    let path = entry.path();
+                    tracing::debug!("Scanning path: {}", path.display());
+                    if !entry.file_type().is_file() {
                         return None;
                     }
-                };
 
-                let path = entry.path();
-                tracing::debug!("Scanning path: {}", path.display());
-                if !entry.file_type().is_file() {
-                    return None;
-                }
+                    let metadata = match std::fs::metadata(path) {
+                        Ok(x) => x,
+                        Err(e) => {
+                            tracing::error!("Error getting file metadata: {}", e);
+                            return None;
+                        }
+                    };
 
-                let metadata = match std::fs::metadata(path) {
-                    Ok(x) => x,
-                    Err(e) => {
-                        tracing::error!("Error getting file metadata: {}", e);
-                        return None;
-                    }
-                };
-
-                Some(FileInfo::new(
-                    path.to_path_buf(),
-                    metadata.modified().unwrap_or_log().into(),
-                    metadata.len(),
-                    settings,
-                ))
-            })
+                    Some(FileInfo::new(
+                        path.to_path_buf(),
+                        metadata.modified().unwrap_or_log().into(),
+                        metadata.len(),
+                        settings,
+                    ))
+                })
         })
         .collect()
 }

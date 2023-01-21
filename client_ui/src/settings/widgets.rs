@@ -1,6 +1,4 @@
-use std::path::PathBuf;
-
-use common_lib::actions::PickFolderResult;
+use common_lib::{actions::PickFolderResult, settings::IndexingDirectory};
 use sycamore::{futures::spawn_local_scoped, prelude::*};
 use uuid::Uuid;
 use wasm_bindgen::JsValue;
@@ -68,14 +66,14 @@ pub fn CheckboxSetting<'a, G: Html>(cx: Scope<'a>, props: CheckboxSettingProps<'
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DirectoryItem {
     pub id: Uuid,
-    pub path: PathBuf,
+    pub dir: IndexingDirectory,
 }
 
 impl DirectoryItem {
-    pub fn new(path: PathBuf) -> Self {
+    pub fn new(dir: IndexingDirectory) -> Self {
         Self {
             id: Uuid::new_v4(),
-            path,
+            dir,
         }
     }
 }
@@ -90,15 +88,20 @@ pub fn DirectoryList<'a, G: Html>(
     directory_list: &'a Signal<Vec<DirectoryItem>>,
     status_dialog_state: &'a Signal<StatusDialogState>,
 ) -> View<G> {
-    let curr_directory = create_signal(cx, PathBuf::new());
-    let curr_directory_empty = create_memo(cx, || curr_directory.get().as_os_str().is_empty());
+    let curr_directory = create_signal(cx, IndexingDirectory::default());
+    let curr_directory_exclude_str = create_signal(cx, "false".to_owned());
+    let curr_directory_empty = create_memo(cx, || curr_directory.get().path.as_os_str().is_empty());
+
+    create_effect(cx, || {
+        curr_directory.modify().exclude = curr_directory_exclude_str.get().parse().unwrap();
+    });
 
     let select_item = move |_| {
         spawn_local_scoped(cx, async {
             match pick_folder().await {
                 Ok(res) => {
                     if let Some(path) = res.path {
-                        curr_directory.set(path);
+                        curr_directory.modify().path = path;
                     }
                 }
                 Err(e) => {
@@ -115,12 +118,13 @@ pub fn DirectoryList<'a, G: Html>(
         directory_list
             .modify()
             .push(DirectoryItem::new((*curr_directory.get()).clone()));
-        curr_directory.set(PathBuf::new());
+        curr_directory.set(IndexingDirectory::default());
     };
 
     view! { cx,
         Keyed(
             iterable=directory_list,
+            key=|item| item.id,
             view=move |cx, item| {
                 let delete_item = move |_| {
                     directory_list.modify().retain(|x| x.id != item.id);
@@ -128,17 +132,21 @@ pub fn DirectoryList<'a, G: Html>(
 
                 view! { cx,
                     div(class="setting") {
-                        input(type="text", readonly=true, value=item.path.display()) {}
+                        input(type="text", readonly=true, value=item.dir.path.display()) {}
+                        p { (if item.dir.exclude { "Исключено" } else { "Включено" }) }
                         button(type="button", on:click=delete_item) { "➖" }
                     }
                 }
-            },
-            key=|item| item.id,
+            }
         )
 
         div(class="setting") {
-            input(type="text", readonly=true, value=curr_directory.get().display()) {}
+            input(type="text", readonly=true, value=curr_directory.get().path.display()) {}
             button(type="button", on:click=select_item) { "Выбрать..." }
+            select(bind:value=curr_directory_exclude_str) {
+                option(selected=true, value="false") { "Включить" }
+                option(value="true") { "Исключить" }
+            }
             button(type="button", on:click=add_item, disabled=*curr_directory_empty.get()) { "➕" }
         }
     }
