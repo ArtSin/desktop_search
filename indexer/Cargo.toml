@@ -17,15 +17,14 @@ elasticsearch.workspace = true
 sha2.workspace = true
 base16ct.workspace = true
 chrono.workspace = true
-once_cell.workspace = true
 async-trait.workspace = true
 mime.workspace = true
 mime_guess.workspace = true
 rust-embed.workspace = true
 uuid.workspace = true
 html-escape.workspace = true
-clap = { version = "4.0.32", features = ["derive"] }
-axum = { version = "0.6.1", features = ["ws"] }
+clap = { version = "4.1.4", features = ["derive"] }
+axum = { version = "0.6.4", features = ["ws"] }
 tower = { version = "0.4.13", features = ["timeout"] }
 tower-http = { version = "0.3.5", features = ["fs", "trace"] }
 tracing = { version = "0.1.37", features = ["release_max_level_info"] }
@@ -33,4 +32,6 @@ tracing-subscriber = { version = "0.3.16", features = ["env-filter"] }
 tracing-unwrap = "0.10.0"
 walkdir = "2.3.2"
 open = "3.2.0"
-rfd = "0.10.0"
+rfd = { version = "0.11.0", default-features = false, features = [
+    "xdg-portal",
+] }

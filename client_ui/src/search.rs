@@ -1,5 +1,6 @@
 use std::path::{Path, PathBuf};
 
+use chrono::{DateTime, Utc};
 use common_lib::{
     actions::PickFileResult,
     search::{
@@ -35,12 +36,6 @@ enum QueryType {
     Image,
 }
 
-#[derive(Default)]
-struct PreviewData {
-    path: PathBuf,
-    content_type: String,
-}
-
 fn get_local_file_url<P: AsRef<Path>>(path: P, content_type: Option<&str>, thumbnail: bool) -> Url {
     let base = Url::parse(&web_sys::window().unwrap().location().origin().unwrap()).unwrap();
     let mut file_url = base.join("/file").unwrap();
@@ -67,9 +62,6 @@ pub fn Search<'a, G: Html>(
     cx: Scope<'a>,
     status_dialog_state: &'a Signal<StatusDialogState>,
 ) -> View<G> {
-    const IMAGE_SIZE_MIN: u32 = 1;
-    const IMAGE_SIZE_MAX: u32 = 99999;
-
     let query = create_signal(cx, String::new());
     let query_image_path = create_signal(cx, PathBuf::new());
 
@@ -95,44 +87,16 @@ pub fn Search<'a, G: Html>(
     let size_to = create_signal(cx, None);
     let size_valid = create_signal(cx, true);
 
-    let width_from = create_signal(cx, None);
-    let width_to = create_signal(cx, None);
-    let width_valid = create_signal(cx, true);
-    let height_from = create_signal(cx, None);
-    let height_to = create_signal(cx, None);
-    let height_valid = create_signal(cx, true);
-
-    let title_enabled = create_signal(cx, true);
-    let creator_enabled = create_signal(cx, true);
-    let doc_created_from = create_signal(cx, None);
-    let doc_created_to = create_signal(cx, None);
-    let doc_created_valid = create_signal(cx, true);
-    let doc_modified_from = create_signal(cx, None);
-    let doc_modified_to = create_signal(cx, None);
-    let doc_modified_valid = create_signal(cx, true);
-    let num_pages_from = create_signal(cx, None);
-    let num_pages_to = create_signal(cx, None);
-    let num_pages_valid = create_signal(cx, true);
-    let num_words_from = create_signal(cx, None);
-    let num_words_to = create_signal(cx, None);
-    let num_words_valid = create_signal(cx, true);
-    let num_characters_from = create_signal(cx, None);
-    let num_characters_to = create_signal(cx, None);
-    let num_characters_valid = create_signal(cx, true);
+    let image_filters_data = create_signal(cx, ImageFiltersData::new(cx));
+    let document_filters_data = create_signal(cx, DocumentFiltersData::new(cx));
 
     let any_invalid = create_memo(cx, || {
         !*modified_valid.get()
             || !*size_valid.get()
-            || !*width_valid.get()
-            || !*height_valid.get()
-            || !*doc_created_valid.get()
-            || !*doc_modified_valid.get()
-            || !*num_pages_valid.get()
-            || !*num_words_valid.get()
-            || !*num_characters_valid.get()
+            || *image_filters_data.get().any_invalid.get()
+            || *document_filters_data.get().any_invalid.get()
     });
 
-    let display_preview = create_signal(cx, false);
     let preview_data = create_signal(cx, PreviewData::default());
 
     let search_results = create_signal(cx, Vec::new());
@@ -141,9 +105,6 @@ pub fn Search<'a, G: Html>(
 
     let toggle_filters = move |_| {
         display_filters.set(!*display_filters.get());
-    };
-    let hide_preview = move |_| {
-        display_preview.set(false);
     };
 
     let select_file = move |_| {
@@ -199,26 +160,8 @@ pub fn Search<'a, G: Html>(
                 modified_to: *modified_to.get(),
                 size_from: size_from.get().map(|x| (x * 1024.0 * 1024.0) as u64),
                 size_to: size_to.get().map(|x| (x * 1024.0 * 1024.0) as u64),
-                image_data: ImageSearchRequest {
-                    width_from: *width_from.get(),
-                    width_to: *width_to.get(),
-                    height_from: *height_from.get(),
-                    height_to: *height_to.get(),
-                },
-                document_data: DocumentSearchRequest {
-                    title_enabled: *title_enabled.get(),
-                    creator_enabled: *creator_enabled.get(),
-                    doc_created_from: *doc_created_from.get(),
-                    doc_created_to: *doc_created_to.get(),
-                    doc_modified_from: *doc_modified_from.get(),
-                    doc_modified_to: *doc_modified_to.get(),
-                    num_pages_from: *num_pages_from.get(),
-                    num_pages_to: *num_pages_to.get(),
-                    num_words_from: *num_words_from.get(),
-                    num_words_to: *num_words_to.get(),
-                    num_characters_from: *num_characters_from.get(),
-                    num_characters_to: *num_characters_to.get(),
-                },
+                image_data: image_filters_data.get().to_request(),
+                document_data: document_filters_data.get().to_request(),
             };
 
             match search(&search_request).await {
@@ -349,45 +292,9 @@ pub fn Search<'a, G: Html>(
                             value_from=size_from, value_to=size_to, valid=size_valid)
                     }
 
-                    details {
-                        summary { "Свойства изображения" }
+                    ImageFilters(data=image_filters_data)
 
-                        NumberFilter(legend="Ширина (пиксели)", id="width",
-                            min=IMAGE_SIZE_MIN, max=IMAGE_SIZE_MAX,
-                            value_from=width_from, value_to=width_to, valid=width_valid)
-
-                        NumberFilter(legend="Высота (пиксели)", id="height",
-                            min=IMAGE_SIZE_MIN, max=IMAGE_SIZE_MAX,
-                            value_from=height_from, value_to=height_to, valid=height_valid)
-                    }
-
-                    details {
-                        summary { "Свойства документа" }
-
-                        fieldset {
-                            legend { "Текстовый поиск" }
-                            CheckboxFilter(text="Заголовок", id="title", value_enabled=title_enabled)
-                            CheckboxFilter(text="Создатель", id="creator", value_enabled=creator_enabled)
-                        }
-
-                        DateTimeFilter(legend="Дата и время создания", id="doc_created",
-                            value_from=doc_created_from, value_to=doc_created_to, valid=doc_created_valid)
-
-                        DateTimeFilter(legend="Дата и время изменения", id="doc_modified",
-                            value_from=doc_modified_from, value_to=doc_modified_to, valid=doc_modified_valid)
-
-                        NumberFilter(legend="Количество страниц", id="num_pages",
-                            min=1, max=u32::MAX, value_from=num_pages_from, value_to=num_pages_to,
-                            valid=num_pages_valid)
-
-                        NumberFilter(legend="Количество слов", id="num_words",
-                            min=1, max=u32::MAX, value_from=num_words_from, value_to=num_words_to,
-                            valid=num_words_valid)
-
-                        NumberFilter(legend="Количество символов", id="num_characters",
-                            min=1, max=u32::MAX, value_from=num_characters_from, value_to=num_characters_to,
-                            valid=num_characters_valid)
-                    }
+                    DocumentFilters(data=document_filters_data)
                 }
             }
 
@@ -408,94 +315,312 @@ pub fn Search<'a, G: Html>(
                 } else {
                     view! { cx, }
                 })
-                SearchResults(search_results=search_results, display_preview=display_preview,
-                    preview_data=preview_data, status_dialog_state=status_dialog_state)
 
-                div(id="pagination") {
-                    Keyed(
-                        iterable=pages,
-                        key=|x| *x,
-                        view=move |cx, x| {
-                            let text = match x {
-                                PageType::First => "<< Первая".to_owned(),
-                                PageType::Previous(_) => "< Предыдущая".to_owned(),
-                                PageType::Next(_) => "Следующая >".to_owned(),
-                                PageType::Last(_) => "Последняя >>".to_owned(),
-                                PageType::Current(p) | PageType::Other(p) => (p + 1).to_string(),
-                            };
+                SearchResults(search_results=search_results, preview_data=preview_data,
+                    status_dialog_state=status_dialog_state)
 
-                            let switch_page = move |_| {
-                                let page = match x {
-                                    PageType::First => 0,
-                                    PageType::Previous(p) | PageType::Next(p) | PageType::Last(p)
-                                        | PageType::Current(p) | PageType::Other(p) => p,
-                                };
-                                search(page);
-                            };
+                Pagination(pages=pages, search=search)
 
-                            match x {
-                                PageType::Current(_) => {
-                                    view! { cx, (text) " " }
-                                }
-                                _ => {
-                                    view! { cx,
-                                        a(on:click=switch_page, href="javascript:void(0);") { (text) }
-                                        " "
-                                    }
+            }
+
+            Preview(preview_data=preview_data)
+        }
+    }
+}
+
+struct ImageFiltersData<'a> {
+    width_from: &'a Signal<Option<u32>>,
+    width_to: &'a Signal<Option<u32>>,
+    width_valid: &'a Signal<bool>,
+
+    height_from: &'a Signal<Option<u32>>,
+    height_to: &'a Signal<Option<u32>>,
+    height_valid: &'a Signal<bool>,
+
+    any_invalid: &'a ReadSignal<bool>,
+}
+
+impl<'a> ImageFiltersData<'a> {
+    fn new(cx: Scope<'a>) -> Self {
+        let width_valid = create_signal(cx, true);
+        let height_valid = create_signal(cx, true);
+        let any_invalid = create_memo(cx, || !*width_valid.get() || !*height_valid.get());
+
+        Self {
+            width_from: create_signal(cx, None),
+            width_to: create_signal(cx, None),
+            width_valid,
+
+            height_from: create_signal(cx, None),
+            height_to: create_signal(cx, None),
+            height_valid,
+
+            any_invalid,
+        }
+    }
+
+    fn to_request(&self) -> ImageSearchRequest {
+        ImageSearchRequest {
+            width_from: *self.width_from.get(),
+            width_to: *self.width_to.get(),
+            height_from: *self.height_from.get(),
+            height_to: *self.height_to.get(),
+        }
+    }
+}
+
+#[component(inline_props)]
+fn ImageFilters<'a, G: Html>(cx: Scope<'a>, data: &'a Signal<ImageFiltersData<'a>>) -> View<G> {
+    const IMAGE_SIZE_MIN: u32 = 1;
+    const IMAGE_SIZE_MAX: u32 = 99999;
+
+    view! { cx,
+        details {
+            summary { "Свойства изображения" }
+
+            NumberFilter(legend="Ширина (пиксели)", id="width",
+                min=IMAGE_SIZE_MIN, max=IMAGE_SIZE_MAX,
+                value_from=data.get().width_from, value_to=data.get().width_to, valid=data.get().width_valid)
+
+            NumberFilter(legend="Высота (пиксели)", id="height",
+                min=IMAGE_SIZE_MIN, max=IMAGE_SIZE_MAX,
+                value_from=data.get().height_from, value_to=data.get().height_to, valid=data.get().height_valid)
+        }
+    }
+}
+
+struct DocumentFiltersData<'a> {
+    title_enabled: &'a Signal<bool>,
+    creator_enabled: &'a Signal<bool>,
+
+    doc_created_from: &'a Signal<Option<DateTime<Utc>>>,
+    doc_created_to: &'a Signal<Option<DateTime<Utc>>>,
+    doc_created_valid: &'a Signal<bool>,
+
+    doc_modified_from: &'a Signal<Option<DateTime<Utc>>>,
+    doc_modified_to: &'a Signal<Option<DateTime<Utc>>>,
+    doc_modified_valid: &'a Signal<bool>,
+
+    num_pages_from: &'a Signal<Option<u32>>,
+    num_pages_to: &'a Signal<Option<u32>>,
+    num_pages_valid: &'a Signal<bool>,
+
+    num_words_from: &'a Signal<Option<u32>>,
+    num_words_to: &'a Signal<Option<u32>>,
+    num_words_valid: &'a Signal<bool>,
+
+    num_characters_from: &'a Signal<Option<u32>>,
+    num_characters_to: &'a Signal<Option<u32>>,
+    num_characters_valid: &'a Signal<bool>,
+
+    any_invalid: &'a ReadSignal<bool>,
+}
+
+impl<'a> DocumentFiltersData<'a> {
+    fn new(cx: Scope<'a>) -> Self {
+        let doc_created_valid = create_signal(cx, true);
+        let doc_modified_valid = create_signal(cx, true);
+        let num_pages_valid = create_signal(cx, true);
+        let num_words_valid = create_signal(cx, true);
+        let num_characters_valid = create_signal(cx, true);
+        let any_invalid = create_memo(cx, || {
+            !*doc_created_valid.get()
+                || !*doc_modified_valid.get()
+                || !*num_pages_valid.get()
+                || !*num_words_valid.get()
+                || !*num_characters_valid.get()
+        });
+
+        Self {
+            title_enabled: create_signal(cx, true),
+            creator_enabled: create_signal(cx, true),
+
+            doc_created_from: create_signal(cx, None),
+            doc_created_to: create_signal(cx, None),
+            doc_created_valid,
+
+            doc_modified_from: create_signal(cx, None),
+            doc_modified_to: create_signal(cx, None),
+            doc_modified_valid,
+
+            num_pages_from: create_signal(cx, None),
+            num_pages_to: create_signal(cx, None),
+            num_pages_valid,
+
+            num_words_from: create_signal(cx, None),
+            num_words_to: create_signal(cx, None),
+            num_words_valid,
+
+            num_characters_from: create_signal(cx, None),
+            num_characters_to: create_signal(cx, None),
+            num_characters_valid,
+
+            any_invalid,
+        }
+    }
+
+    fn to_request(&self) -> DocumentSearchRequest {
+        DocumentSearchRequest {
+            title_enabled: *self.title_enabled.get(),
+            creator_enabled: *self.creator_enabled.get(),
+            doc_created_from: *self.doc_created_from.get(),
+            doc_created_to: *self.doc_created_to.get(),
+            doc_modified_from: *self.doc_modified_from.get(),
+            doc_modified_to: *self.doc_modified_to.get(),
+            num_pages_from: *self.num_pages_from.get(),
+            num_pages_to: *self.num_pages_to.get(),
+            num_words_from: *self.num_words_from.get(),
+            num_words_to: *self.num_words_to.get(),
+            num_characters_from: *self.num_characters_from.get(),
+            num_characters_to: *self.num_characters_to.get(),
+        }
+    }
+}
+
+#[component(inline_props)]
+fn DocumentFilters<'a, G: Html>(
+    cx: Scope<'a>,
+    data: &'a Signal<DocumentFiltersData<'a>>,
+) -> View<G> {
+    view! { cx,
+        details {
+            summary { "Свойства документа" }
+
+            fieldset {
+                legend { "Текстовый поиск" }
+                CheckboxFilter(text="Заголовок", id="title", value_enabled=data.get().title_enabled)
+                CheckboxFilter(text="Создатель", id="creator", value_enabled=data.get().creator_enabled)
+            }
+
+            DateTimeFilter(legend="Дата и время создания", id="doc_created",
+                value_from=data.get().doc_created_from, value_to=data.get().doc_created_to,
+                valid=data.get().doc_created_valid)
+
+            DateTimeFilter(legend="Дата и время изменения", id="doc_modified",
+                value_from=data.get().doc_modified_from, value_to=data.get().doc_modified_to,
+                valid=data.get().doc_modified_valid)
+
+            NumberFilter(legend="Количество страниц", id="num_pages", min=1, max=u32::MAX,
+                value_from=data.get().num_pages_from, value_to=data.get().num_pages_to,
+                valid=data.get().num_pages_valid)
+
+            NumberFilter(legend="Количество слов", id="num_words", min=1, max=u32::MAX,
+            value_from=data.get().num_words_from, value_to=data.get().num_words_to,
+                valid=data.get().num_words_valid)
+
+            NumberFilter(legend="Количество символов", id="num_characters", min=1, max=u32::MAX,
+                value_from=data.get().num_characters_from, value_to=data.get().num_characters_to,
+                valid=data.get().num_characters_valid)
+        }
+    }
+}
+
+#[component(inline_props)]
+fn Pagination<'a, F, G>(cx: Scope<'a>, pages: &'a ReadSignal<Vec<PageType>>, search: F) -> View<G>
+where
+    F: Fn(u32) + Copy + 'a,
+    G: Html,
+{
+    view! { cx,
+        div(id="pagination") {
+            Keyed(
+                iterable=pages,
+                key=|x| *x,
+                view=move |cx, x| {
+                    let text = match x {
+                        PageType::First => "<< Первая".to_owned(),
+                        PageType::Previous(_) => "< Предыдущая".to_owned(),
+                        PageType::Next(_) => "Следующая >".to_owned(),
+                        PageType::Last(_) => "Последняя >>".to_owned(),
+                        PageType::Current(p) | PageType::Other(p) => (p + 1).to_string(),
+                    };
+
+                    let switch_page = move |_| {
+                        let page = match x {
+                            PageType::First => 0,
+                            PageType::Previous(p) | PageType::Next(p) | PageType::Last(p)
+                                | PageType::Current(p) | PageType::Other(p) => p,
+                        };
+                        search(page);
+                    };
+
+                    match x {
+                        PageType::Current(_) => {
+                            view! { cx, (text) " " }
+                        }
+                        _ => {
+                            view! { cx,
+                                a(on:click=switch_page, href="javascript:void(0);") { (text) }
+                                " "
+                            }
+                        }
+                    }
+                }
+            )
+        }
+    }
+}
+
+#[derive(Debug, Clone, Default)]
+struct PreviewData {
+    display: bool,
+    path: PathBuf,
+    content_type: String,
+}
+
+#[component(inline_props)]
+fn Preview<'a, G: Html>(cx: Scope<'a>, preview_data: &'a Signal<PreviewData>) -> View<G> {
+    let hide_preview = move |_| {
+        preview_data.modify().display = false;
+    };
+
+    view! { cx,
+        (if preview_data.get().display {
+            let content_type = preview_data.get().content_type.clone();
+            let object_url = get_local_file_url(&preview_data.get().path, Some(&content_type), false);
+            view! { cx,
+                aside(id="preview") {
+                    button(form="search", type="button", on:click=hide_preview) { "✖" }
+
+                    (if content_type.starts_with("video") {
+                        let object_url = object_url.clone();
+
+                        view! { cx,
+                            video(id="preview_object", controls=true, autoplay=true) {
+                                source(src=object_url)
+
+                                p(style="text-align: center;") {
+                                    "Предпросмотр файла не поддерживается"
                                 }
                             }
                         }
-                    )
+                    } else if content_type.starts_with("audio") {
+                        let object_url = object_url.clone();
+
+                        view! { cx,
+                            audio(id="preview_object", controls=true, autoplay=true) {
+                                source(src=object_url)
+
+                                p(style="text-align: center;") {
+                                    "Предпросмотр файла не поддерживается"
+                                }
+                            }
+                        }
+                    } else {
+                        let object_url = object_url.clone();
+
+                        view! { cx,
+                            object(id="preview_object", data=object_url) {
+                                p(style="text-align: center;") {
+                                    "Предпросмотр файла не поддерживается"
+                                }
+                            }
+                        }
+                    })
                 }
             }
-
-            (if *display_preview.get() {
-                let content_type = preview_data.get().content_type.clone();
-                let object_url = get_local_file_url(&preview_data.get().path, Some(&content_type), false);
-                view! { cx,
-                    aside(id="preview") {
-                        button(form="search", type="button", on:click=hide_preview) { "✖" }
-
-                        (if content_type.starts_with("video") {
-                            let object_url = object_url.clone();
-
-                            view! { cx,
-                                video(id="preview_object", controls=true, autoplay=true) {
-                                    source(src=object_url)
-
-                                    p(style="text-align: center;") {
-                                        "Предпросмотр файла не поддерживается"
-                                    }
-                                }
-                            }
-                        } else if content_type.starts_with("audio") {
-                            let object_url = object_url.clone();
-
-                            view! { cx,
-                                audio(id="preview_object", controls=true, autoplay=true) {
-                                    source(src=object_url)
-
-                                    p(style="text-align: center;") {
-                                        "Предпросмотр файла не поддерживается"
-                                    }
-                                }
-                            }
-                        } else {
-                            let object_url = object_url.clone();
-
-                            view! { cx,
-                                object(id="preview_object", data=object_url) {
-                                    p(style="text-align: center;") {
-                                        "Предпросмотр файла не поддерживается"
-                                    }
-                                }
-                            }
-                        })
-                    }
-                }
-            } else {
-                view! { cx, }
-            })
-        }
+        } else {
+            view! { cx, }
+        })
     }
 }

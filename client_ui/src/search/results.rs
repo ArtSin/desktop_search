@@ -15,7 +15,6 @@ async fn open_path(args: &OpenPathArgs) -> Result<(), JsValue> {
 pub(super) fn SearchResults<'a, G: Html>(
     cx: Scope<'a>,
     search_results: &'a ReadSignal<Vec<SearchResult>>,
-    display_preview: &'a Signal<bool>,
     preview_data: &'a Signal<PreviewData>,
     status_dialog_state: &'a Signal<StatusDialogState>,
 ) -> View<G> {
@@ -35,10 +34,10 @@ pub(super) fn SearchResults<'a, G: Html>(
 
                 let show_preview = move |_| {
                     preview_data.set(PreviewData {
+                        display: true,
                         path: item.file.path.clone(),
                         content_type: content_type.clone()
                     });
-                    display_preview.set(true);
                 };
                 let open_path = move |path| {
                     spawn_local_scoped(cx, async move {

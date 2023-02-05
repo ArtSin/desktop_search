@@ -12,19 +12,19 @@ derive_more.workspace = true
 chrono.workspace = true
 futures.workspace = true
 console_error_panic_hook = "0.1.7"
-uuid = { version = "1.2.2", features = ["serde", "v4", "js"] }
+uuid = { version = "1.3.0", features = ["serde", "v4", "js"] }
 serde-wasm-bindgen = "0.4.5"
-web-sys = { version = "0.3.60", features = [
+web-sys = { version = "0.3.61", features = [
     "EventTarget",
     "HtmlElement",
     "HtmlDialogElement",
     "Location",
     "WebSocket",
 ] }
-js-sys = "0.3.60"
-wasm-bindgen = { version = "0.2.83", features = ["serde-serialize"] }
-wasm-bindgen-futures = "0.4.33"
-gloo-net = "0.2.5"
+js-sys = "0.3.61"
+wasm-bindgen = { version = "0.2.84", features = ["serde-serialize"] }
+wasm-bindgen-futures = "0.4.34"
+gloo-net = "0.2.6"
 sycamore = { version = "0.8.2", features = ["suspense", "hydrate"] }
 
 [features]
