@@ -60,8 +60,7 @@ pub fn Status<'a, G: Html>(
             .await
             {
                 status_dialog_state.set(StatusDialogState::Error(format!(
-                    "❌ Ошибка загрузки статуса индексирования: {}",
-                    e
+                    "❌ Ошибка загрузки статуса индексирования: {e}",
                 )));
             }
         });
@@ -77,8 +76,7 @@ pub fn Status<'a, G: Html>(
                 }
                 Err(e) => {
                     status_dialog_state.set(StatusDialogState::Error(format!(
-                        "❌ Ошибка индексирования: {:#?}",
-                        e,
+                        "❌ Ошибка индексирования: {e:#?}",
                     )));
                 }
             }
@@ -95,8 +93,7 @@ pub fn Status<'a, G: Html>(
                 }
                 Err(e) => {
                     status_dialog_state.set(StatusDialogState::Error(format!(
-                        "❌ Ошибка очищения индекса: {:#?}",
-                        e,
+                        "❌ Ошибка очищения индекса: {e:#?}",
                     )));
                 }
             }

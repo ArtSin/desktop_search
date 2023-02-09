@@ -106,14 +106,14 @@ async fn main() {
                     } else {
                         Err((
                             StatusCode::INTERNAL_SERVER_ERROR,
-                            format!("Unhandled internal error: {}", error),
+                            format!("Unhandled internal error: {error}"),
                         ))
                     }
                 }))
                 .timeout(Duration::MAX)
                 .layer(TraceLayer::new_for_http()),
         );
-    let url = format!("http://{}", address);
+    let url = format!("http://{address}");
     tracing::info!("Listening on {}", url);
     if open_on_start {
         open::that(url).expect_or_log("Can't open server URL");

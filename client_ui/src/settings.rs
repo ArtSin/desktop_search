@@ -272,8 +272,7 @@ pub fn Settings<'a, G: Html>(
             }
             Err(e) => {
                 status_dialog_state.set(StatusDialogState::Error(format!(
-                    "❌ Ошибка загрузки настроек: {:#?}",
-                    e
+                    "❌ Ошибка загрузки настроек: {e:#?}",
                 )));
             }
         }
@@ -300,8 +299,7 @@ pub fn Settings<'a, G: Html>(
 
             if let Err(e) = put_settings(&new_settings).await {
                 status_dialog_state.set(StatusDialogState::Error(format!(
-                    "❌ Ошибка сохранения настроек: {:#?}",
-                    e
+                    "❌ Ошибка сохранения настроек: {e:#?}",
                 )));
                 return;
             }

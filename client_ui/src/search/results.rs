@@ -57,8 +57,7 @@ pub(super) fn SearchResults<'a, G: Html>(
 
                         if let Err(e) = open_path(&OpenPathArgs { path }).await {
                             status_dialog_state.set(StatusDialogState::Error(format!(
-                                "❌ Ошибка открытия: {:#?}",
-                                e
+                                "❌ Ошибка открытия: {e:#?}",
                             )));
                             return;
                         }

@@ -77,7 +77,7 @@ async fn streaming_process<T, F, Fut>(
     }
     for f in futures {
         if let Err(e) = f.await.unwrap_or_log() {
-            on_event(Arc::clone(&state), IndexingEvent::Error(format!("{:?}", e))).await;
+            on_event(Arc::clone(&state), IndexingEvent::Error(format!("{e:?}"))).await;
         }
     }
 }
@@ -227,7 +227,7 @@ pub async fn index(State(state): State<Arc<ServerState>>) -> (StatusCode, String
         .await;
         streaming_process(Arc::clone(&state), tx, diff.removed, remove_old).await;
         if let Err(e) = bulk_send_f.await.unwrap_or_log() {
-            on_event(Arc::clone(&state), IndexingEvent::Error(format!("{:?}", e))).await;
+            on_event(Arc::clone(&state), IndexingEvent::Error(format!("{e:?}"))).await;
         }
 
         // Finish indexing
@@ -238,7 +238,7 @@ pub async fn index(State(state): State<Arc<ServerState>>) -> (StatusCode, String
             .send()
             .await
         {
-            on_event(Arc::clone(&state), IndexingEvent::Error(format!("{:?}", e))).await;
+            on_event(Arc::clone(&state), IndexingEvent::Error(format!("{e:?}"))).await;
         }
 
         let indexing_duration = Instant::now() - start_time;

@@ -106,8 +106,7 @@ pub fn DirectoryList<'a, G: Html>(
                 }
                 Err(e) => {
                     status_dialog_state.set(StatusDialogState::Error(format!(
-                        "❌ Ошибка открытия диалога: {:#?}",
-                        e
+                        "❌ Ошибка открытия диалога: {e:#?}",
                     )));
                 }
             }

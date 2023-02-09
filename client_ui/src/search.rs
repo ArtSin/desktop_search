@@ -124,8 +124,7 @@ pub fn Search<'a, G: Html>(
                 }
                 Err(e) => {
                     status_dialog_state.set(StatusDialogState::Error(format!(
-                        "❌ Ошибка открытия диалога: {:#?}",
-                        e
+                        "❌ Ошибка открытия диалога: {e:#?}",
                     )));
                 }
             }
@@ -180,8 +179,7 @@ pub fn Search<'a, G: Html>(
                 Err(e) => {
                     search_results.set(Vec::new());
                     status_dialog_state.set(StatusDialogState::Error(format!(
-                        "❌ Ошибка поиска: {:#?}",
-                        e
+                        "❌ Ошибка поиска: {e:#?}",
                     )));
                 }
             }

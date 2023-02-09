@@ -64,7 +64,7 @@ pub async fn get_file(
                 .unwrap_or_log()),
             Err(err) => Err((
                 StatusCode::INTERNAL_SERVER_ERROR,
-                format!("Can't create thumbnail: {}", err),
+                format!("Can't create thumbnail: {err}"),
             )),
         }
     } else {
@@ -73,7 +73,7 @@ pub async fn get_file(
         let request = request_builder.body(()).map_err(|e| {
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                format!("File request error: {}", e),
+                format!("File request error: {e}"),
             )
         })?;
 
@@ -95,7 +95,7 @@ pub async fn get_file(
             Ok(res) => Ok(res.map(boxed)),
             Err(err) => Err((
                 StatusCode::INTERNAL_SERVER_ERROR,
-                format!("Can't read file: {}", err),
+                format!("Can't read file: {err}"),
             )),
         }?;
 
