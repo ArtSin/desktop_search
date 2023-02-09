@@ -21,7 +21,7 @@ pub mod widgets;
 enum AppTabs {
     #[display(fmt = "Поиск")]
     Search,
-    #[display(fmt = "Статус индексации")]
+    #[display(fmt = "Индексация")]
     Status,
     #[display(fmt = "Настройки")]
     Settings,
@@ -33,7 +33,7 @@ impl FromStr for AppTabs {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
             "Поиск" => Ok(AppTabs::Search),
-            "Статус индексации" => Ok(AppTabs::Status),
+            "Индексация" => Ok(AppTabs::Status),
             "Настройки" => Ok(AppTabs::Settings),
             _ => Err(std::fmt::Error),
         }

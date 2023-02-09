@@ -1,12 +1,8 @@
 use std::path::{Path, PathBuf};
 
-use chrono::{DateTime, Utc};
 use common_lib::{
     actions::PickFileResult,
-    search::{
-        DocumentSearchRequest, ImageQuery, ImageSearchRequest, PageType, SearchRequest,
-        SearchResponse, TextQuery,
-    },
+    search::{ImageQuery, PageType, SearchRequest, SearchResponse, TextQuery},
 };
 use sycamore::{futures::spawn_local_scoped, prelude::*};
 use url::Url;
@@ -27,6 +23,12 @@ use crate::{
     settings::{MAX_FILE_SIZE_MAX, MAX_FILE_SIZE_MIN},
 };
 
+use self::filter_groups::{
+    DocumentFilters, DocumentFiltersData, ImageFilters, ImageFiltersData, MultimediaFilters,
+    MultimediaFiltersData,
+};
+
+mod filter_groups;
 mod filters;
 mod results;
 
@@ -88,12 +90,14 @@ pub fn Search<'a, G: Html>(
     let size_valid = create_signal(cx, true);
 
     let image_filters_data = create_signal(cx, ImageFiltersData::new(cx));
+    let multimedia_filters_data = create_signal(cx, MultimediaFiltersData::new(cx));
     let document_filters_data = create_signal(cx, DocumentFiltersData::new(cx));
 
     let any_invalid = create_memo(cx, || {
         !*modified_valid.get()
             || !*size_valid.get()
             || *image_filters_data.get().any_invalid.get()
+            || *multimedia_filters_data.get().any_invalid.get()
             || *document_filters_data.get().any_invalid.get()
     });
 
@@ -161,6 +165,7 @@ pub fn Search<'a, G: Html>(
                 size_from: size_from.get().map(|x| (x * 1024.0 * 1024.0) as u64),
                 size_to: size_to.get().map(|x| (x * 1024.0 * 1024.0) as u64),
                 image_data: image_filters_data.get().to_request(),
+                multimedia_data: multimedia_filters_data.get().to_request(),
                 document_data: document_filters_data.get().to_request(),
             };
 
@@ -294,6 +299,8 @@ pub fn Search<'a, G: Html>(
 
                     ImageFilters(data=image_filters_data)
 
+                    MultimediaFilters(data=multimedia_filters_data)
+
                     DocumentFilters(data=document_filters_data)
                 }
             }
@@ -324,193 +331,6 @@ pub fn Search<'a, G: Html>(
             }
 
             Preview(preview_data=preview_data)
-        }
-    }
-}
-
-struct ImageFiltersData<'a> {
-    width_from: &'a Signal<Option<u32>>,
-    width_to: &'a Signal<Option<u32>>,
-    width_valid: &'a Signal<bool>,
-
-    height_from: &'a Signal<Option<u32>>,
-    height_to: &'a Signal<Option<u32>>,
-    height_valid: &'a Signal<bool>,
-
-    any_invalid: &'a ReadSignal<bool>,
-}
-
-impl<'a> ImageFiltersData<'a> {
-    fn new(cx: Scope<'a>) -> Self {
-        let width_valid = create_signal(cx, true);
-        let height_valid = create_signal(cx, true);
-        let any_invalid = create_memo(cx, || !*width_valid.get() || !*height_valid.get());
-
-        Self {
-            width_from: create_signal(cx, None),
-            width_to: create_signal(cx, None),
-            width_valid,
-
-            height_from: create_signal(cx, None),
-            height_to: create_signal(cx, None),
-            height_valid,
-
-            any_invalid,
-        }
-    }
-
-    fn to_request(&self) -> ImageSearchRequest {
-        ImageSearchRequest {
-            width_from: *self.width_from.get(),
-            width_to: *self.width_to.get(),
-            height_from: *self.height_from.get(),
-            height_to: *self.height_to.get(),
-        }
-    }
-}
-
-#[component(inline_props)]
-fn ImageFilters<'a, G: Html>(cx: Scope<'a>, data: &'a Signal<ImageFiltersData<'a>>) -> View<G> {
-    const IMAGE_SIZE_MIN: u32 = 1;
-    const IMAGE_SIZE_MAX: u32 = 99999;
-
-    view! { cx,
-        details {
-            summary { "Свойства изображения" }
-
-            NumberFilter(legend="Ширина (пиксели)", id="width",
-                min=IMAGE_SIZE_MIN, max=IMAGE_SIZE_MAX,
-                value_from=data.get().width_from, value_to=data.get().width_to, valid=data.get().width_valid)
-
-            NumberFilter(legend="Высота (пиксели)", id="height",
-                min=IMAGE_SIZE_MIN, max=IMAGE_SIZE_MAX,
-                value_from=data.get().height_from, value_to=data.get().height_to, valid=data.get().height_valid)
-        }
-    }
-}
-
-struct DocumentFiltersData<'a> {
-    title_enabled: &'a Signal<bool>,
-    creator_enabled: &'a Signal<bool>,
-
-    doc_created_from: &'a Signal<Option<DateTime<Utc>>>,
-    doc_created_to: &'a Signal<Option<DateTime<Utc>>>,
-    doc_created_valid: &'a Signal<bool>,
-
-    doc_modified_from: &'a Signal<Option<DateTime<Utc>>>,
-    doc_modified_to: &'a Signal<Option<DateTime<Utc>>>,
-    doc_modified_valid: &'a Signal<bool>,
-
-    num_pages_from: &'a Signal<Option<u32>>,
-    num_pages_to: &'a Signal<Option<u32>>,
-    num_pages_valid: &'a Signal<bool>,
-
-    num_words_from: &'a Signal<Option<u32>>,
-    num_words_to: &'a Signal<Option<u32>>,
-    num_words_valid: &'a Signal<bool>,
-
-    num_characters_from: &'a Signal<Option<u32>>,
-    num_characters_to: &'a Signal<Option<u32>>,
-    num_characters_valid: &'a Signal<bool>,
-
-    any_invalid: &'a ReadSignal<bool>,
-}
-
-impl<'a> DocumentFiltersData<'a> {
-    fn new(cx: Scope<'a>) -> Self {
-        let doc_created_valid = create_signal(cx, true);
-        let doc_modified_valid = create_signal(cx, true);
-        let num_pages_valid = create_signal(cx, true);
-        let num_words_valid = create_signal(cx, true);
-        let num_characters_valid = create_signal(cx, true);
-        let any_invalid = create_memo(cx, || {
-            !*doc_created_valid.get()
-                || !*doc_modified_valid.get()
-                || !*num_pages_valid.get()
-                || !*num_words_valid.get()
-                || !*num_characters_valid.get()
-        });
-
-        Self {
-            title_enabled: create_signal(cx, true),
-            creator_enabled: create_signal(cx, true),
-
-            doc_created_from: create_signal(cx, None),
-            doc_created_to: create_signal(cx, None),
-            doc_created_valid,
-
-            doc_modified_from: create_signal(cx, None),
-            doc_modified_to: create_signal(cx, None),
-            doc_modified_valid,
-
-            num_pages_from: create_signal(cx, None),
-            num_pages_to: create_signal(cx, None),
-            num_pages_valid,
-
-            num_words_from: create_signal(cx, None),
-            num_words_to: create_signal(cx, None),
-            num_words_valid,
-
-            num_characters_from: create_signal(cx, None),
-            num_characters_to: create_signal(cx, None),
-            num_characters_valid,
-
-            any_invalid,
-        }
-    }
-
-    fn to_request(&self) -> DocumentSearchRequest {
-        DocumentSearchRequest {
-            title_enabled: *self.title_enabled.get(),
-            creator_enabled: *self.creator_enabled.get(),
-            doc_created_from: *self.doc_created_from.get(),
-            doc_created_to: *self.doc_created_to.get(),
-            doc_modified_from: *self.doc_modified_from.get(),
-            doc_modified_to: *self.doc_modified_to.get(),
-            num_pages_from: *self.num_pages_from.get(),
-            num_pages_to: *self.num_pages_to.get(),
-            num_words_from: *self.num_words_from.get(),
-            num_words_to: *self.num_words_to.get(),
-            num_characters_from: *self.num_characters_from.get(),
-            num_characters_to: *self.num_characters_to.get(),
-        }
-    }
-}
-
-#[component(inline_props)]
-fn DocumentFilters<'a, G: Html>(
-    cx: Scope<'a>,
-    data: &'a Signal<DocumentFiltersData<'a>>,
-) -> View<G> {
-    view! { cx,
-        details {
-            summary { "Свойства документа" }
-
-            fieldset {
-                legend { "Текстовый поиск" }
-                CheckboxFilter(text="Заголовок", id="title", value_enabled=data.get().title_enabled)
-                CheckboxFilter(text="Создатель", id="creator", value_enabled=data.get().creator_enabled)
-            }
-
-            DateTimeFilter(legend="Дата и время создания", id="doc_created",
-                value_from=data.get().doc_created_from, value_to=data.get().doc_created_to,
-                valid=data.get().doc_created_valid)
-
-            DateTimeFilter(legend="Дата и время изменения", id="doc_modified",
-                value_from=data.get().doc_modified_from, value_to=data.get().doc_modified_to,
-                valid=data.get().doc_modified_valid)
-
-            NumberFilter(legend="Количество страниц", id="num_pages", min=1, max=u32::MAX,
-                value_from=data.get().num_pages_from, value_to=data.get().num_pages_to,
-                valid=data.get().num_pages_valid)
-
-            NumberFilter(legend="Количество слов", id="num_words", min=1, max=u32::MAX,
-            value_from=data.get().num_words_from, value_to=data.get().num_words_to,
-                valid=data.get().num_words_valid)
-
-            NumberFilter(legend="Количество символов", id="num_characters", min=1, max=u32::MAX,
-                value_from=data.get().num_characters_from, value_to=data.get().num_characters_to,
-                valid=data.get().num_characters_valid)
         }
     }
 }
@@ -582,7 +402,13 @@ fn Preview<'a, G: Html>(cx: Scope<'a>, preview_data: &'a Signal<PreviewData>) ->
                 aside(id="preview") {
                     button(form="search", type="button", on:click=hide_preview) { "✖" }
 
-                    (if content_type.starts_with("video") {
+                    (if content_type.starts_with("image") {
+                        let object_url = object_url.clone();
+
+                        view! { cx,
+                            img(id="preview_object", src=object_url)
+                        }
+                    } else if content_type.starts_with("video") {
                         let object_url = object_url.clone();
 
                         view! { cx,

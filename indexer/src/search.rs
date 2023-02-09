@@ -4,8 +4,9 @@ use axum::{extract::State, http::StatusCode, Json};
 use common_lib::{
     elasticsearch::{FileES, ELASTICSEARCH_INDEX, ELASTICSEARCH_MAX_SIZE},
     search::{
-        ContentTypeRequestItem, DocumentHighlightedFields, HighlightedFields, ImageQuery, PageType,
-        QueryType, SearchRequest, SearchResponse, SearchResult, TextQuery,
+        ContentTypeRequestItem, DocumentHighlightedFields, HighlightedFields,
+        ImageHighlightedFields, ImageQuery, MultimediaHighlightedFields, PageType, QueryType,
+        SearchRequest, SearchResponse, SearchResult, TextQuery,
     },
 };
 use elasticsearch::{Elasticsearch, SearchParts};
@@ -22,7 +23,9 @@ use crate::{
     ServerState,
 };
 
-use self::query::{range, simple_query_string, suggest, terms};
+use self::query::{range, simple_query_string, suggest, term, terms};
+
+mod query;
 
 const RESULTS_PER_PAGE: u32 = 20;
 const ADJACENT_PAGES: u32 = 3;
@@ -73,6 +76,7 @@ fn get_es_request_filter(search_request: &SearchRequest) -> Vec<Value> {
         ),
         (search_request.size_from.is_some() || search_request.size_to.is_some())
             .then(|| range("size", search_request.size_from, search_request.size_to)),
+        // Fields for image files
         (search_request.image_data.width_from.is_some()
             || search_request.image_data.width_to.is_some())
         .then(|| {
@@ -91,6 +95,96 @@ fn get_es_request_filter(search_request: &SearchRequest) -> Vec<Value> {
                 search_request.image_data.height_to,
             )
         }),
+        (search_request.image_data.x_resolution_from.is_some()
+            || search_request.image_data.x_resolution_to.is_some()
+            || search_request.image_data.y_resolution_from.is_some()
+            || search_request.image_data.y_resolution_to.is_some())
+        .then(|| term("resolution_unit", search_request.image_data.resolution_unit)),
+        (search_request.image_data.x_resolution_from.is_some()
+            || search_request.image_data.x_resolution_to.is_some())
+        .then(|| {
+            range(
+                "x_resolution",
+                search_request.image_data.x_resolution_from,
+                search_request.image_data.x_resolution_to,
+            )
+        }),
+        (search_request.image_data.y_resolution_from.is_some()
+            || search_request.image_data.y_resolution_to.is_some())
+        .then(|| {
+            range(
+                "y_resolution",
+                search_request.image_data.y_resolution_from,
+                search_request.image_data.y_resolution_to,
+            )
+        }),
+        (search_request.image_data.f_number_from.is_some()
+            || search_request.image_data.f_number_to.is_some())
+        .then(|| {
+            range(
+                "f_number",
+                search_request.image_data.f_number_from,
+                search_request.image_data.f_number_to,
+            )
+        }),
+        (search_request.image_data.focal_length_from.is_some()
+            || search_request.image_data.focal_length_to.is_some())
+        .then(|| {
+            range(
+                "focal_length",
+                search_request.image_data.focal_length_from,
+                search_request.image_data.focal_length_to,
+            )
+        }),
+        (search_request.image_data.exposure_time_from.is_some()
+            || search_request.image_data.exposure_time_to.is_some())
+        .then(|| {
+            range(
+                "exposure_time",
+                search_request.image_data.exposure_time_from,
+                search_request.image_data.exposure_time_to,
+            )
+        }),
+        search_request
+            .image_data
+            .flash_fired
+            .map(|x| term("flash_fired", x)),
+        // Fields for multimedia files
+        (search_request.multimedia_data.duration_min_from.is_some()
+            || search_request.multimedia_data.duration_min_to.is_some())
+        .then(|| {
+            range(
+                "duration",
+                search_request
+                    .multimedia_data
+                    .duration_min_from
+                    .map(|x| x * 60.0),
+                search_request
+                    .multimedia_data
+                    .duration_min_to
+                    .map(|x| x * 60.0),
+            )
+        }),
+        (search_request
+            .multimedia_data
+            .audio_sample_rate_from
+            .is_some()
+            || search_request
+                .multimedia_data
+                .audio_sample_rate_to
+                .is_some())
+        .then(|| {
+            range(
+                "audio_sample_rate",
+                search_request.multimedia_data.audio_sample_rate_from,
+                search_request.multimedia_data.audio_sample_rate_to,
+            )
+        }),
+        search_request
+            .multimedia_data
+            .audio_channel_type
+            .map(|x| term("audio_channel_type", x)),
+        // Fields for document files
         (search_request.document_data.doc_created_from.is_some()
             || search_request.document_data.doc_created_to.is_some())
         .then(|| {
@@ -165,6 +259,45 @@ fn get_es_request_must(search_request: &SearchRequest) -> Vec<Value> {
                 search_request.path_enabled.then_some("path"),
                 search_request.hash_enabled.then_some("hash"),
                 content_enabled.then_some("content"),
+                // Fields for image files
+                search_request
+                    .image_data
+                    .image_make_enabled
+                    .then_some("image_make"),
+                search_request
+                    .image_data
+                    .image_model_enabled
+                    .then_some("image_model"),
+                search_request
+                    .image_data
+                    .image_software_enabled
+                    .then_some("image_software"),
+                // Fields for multimedia files
+                search_request
+                    .multimedia_data
+                    .artist_enabled
+                    .then_some("artist"),
+                search_request
+                    .multimedia_data
+                    .album_enabled
+                    .then_some("album"),
+                search_request
+                    .multimedia_data
+                    .genre_enabled
+                    .then_some("genre"),
+                search_request
+                    .multimedia_data
+                    .track_number_enabled
+                    .then_some("track_number"),
+                search_request
+                    .multimedia_data
+                    .disc_number_enabled
+                    .then_some("disc_number"),
+                search_request
+                    .multimedia_data
+                    .release_date_enabled
+                    .then_some("release_date"),
+                // Fields for document files
                 search_request
                     .document_data
                     .title_enabled
@@ -282,24 +415,30 @@ async fn get_request_body(
                     "pre_tags": ["<b>"],
                     "post_tags": ["</b>"],
                     "encoder": "html",
+                    "number_of_fragments": 0,
+                    "max_analyzed_offset": 1000000,
                     "fields": {
-                        "path": {
-                            "number_of_fragments": 0
-                        },
-                        "hash": {
-                            "number_of_fragments": 0
-                        },
+                        "path": {},
+                        "hash": {},
                         "content": {
                             "fragment_size": 300,
                             "no_match_size": 300,
                             "number_of_fragments": 1
                         },
-                        "title": {
-                            "number_of_fragments": 0
-                        },
-                        "creator": {
-                            "number_of_fragments": 0
-                        }
+                        // Fields for image files
+                        "image_make": {},
+                        "image_model": {},
+                        "image_software": {},
+                        // Fields for multimedia files
+                        "artist": {},
+                        "album": {},
+                        "genre": {},
+                        "track_number": {},
+                        "disc_number": {},
+                        "release_date": {},
+                        // Fields for document files
+                        "title": {},
+                        "creator": {}
                     }
                 }),
             );
@@ -394,6 +533,55 @@ fn get_results(es_response_body: &Value) -> Vec<SearchResult> {
                 path: get_highlighted_field(val, "path", file_es.path.to_str().unwrap_or_log()),
                 hash: get_highlighted_optional_field(val, "hash", file_es.hash.as_deref()),
                 content: get_highlighted_optional_field(val, "content", file_es.content.as_deref()),
+                image_data: ImageHighlightedFields {
+                    image_make: get_highlighted_optional_field(
+                        val,
+                        "image_make",
+                        file_es.image_data.image_make.as_deref(),
+                    ),
+                    image_model: get_highlighted_optional_field(
+                        val,
+                        "image_model",
+                        file_es.image_data.image_model.as_deref(),
+                    ),
+                    image_software: get_highlighted_optional_field(
+                        val,
+                        "image_software",
+                        file_es.image_data.image_software.as_deref(),
+                    ),
+                },
+                multimedia_data: MultimediaHighlightedFields {
+                    artist: get_highlighted_optional_field(
+                        val,
+                        "artist",
+                        file_es.multimedia_data.artist.as_deref(),
+                    ),
+                    album: get_highlighted_optional_field(
+                        val,
+                        "album",
+                        file_es.multimedia_data.album.as_deref(),
+                    ),
+                    genre: get_highlighted_optional_field(
+                        val,
+                        "genre",
+                        file_es.multimedia_data.genre.as_deref(),
+                    ),
+                    track_number: get_highlighted_optional_field(
+                        val,
+                        "track_number",
+                        file_es.multimedia_data.track_number.as_deref(),
+                    ),
+                    disc_number: get_highlighted_optional_field(
+                        val,
+                        "disc_number",
+                        file_es.multimedia_data.disc_number.as_deref(),
+                    ),
+                    release_date: get_highlighted_optional_field(
+                        val,
+                        "release_date",
+                        file_es.multimedia_data.release_date.as_deref(),
+                    ),
+                },
                 document_data: DocumentHighlightedFields {
                     title: get_highlighted_optional_field(
                         val,
@@ -500,92 +688,4 @@ pub async fn search(
         pages,
         suggestion,
     }))
-}
-
-mod query {
-    use serde::Serialize;
-    use serde_json::{json, Value};
-
-    pub fn simple_query_string(mut query: String, fields: &[&str]) -> Value {
-        if query.is_empty() {
-            query = "*".to_owned();
-        }
-        json!({
-            "simple_query_string": {
-                "query": query,
-                "fields": fields,
-            }
-        })
-    }
-
-    pub fn terms(field: &str, values: impl Serialize) -> Value {
-        json!({
-            "terms": {
-                field: values
-            }
-        })
-    }
-
-    // pub fn term(field: &str, value: impl Serialize) -> Value {
-    //     json!({
-    //         "term": {
-    //             field: {
-    //                 "value": value,
-    //             }
-    //         }
-    //     })
-    // }
-
-    // pub fn match_(field: &str, query: impl Serialize) -> Value {
-    //     json!({
-    //         "match": {
-    //             field: {
-    //                 "query": query,
-    //             }
-    //         }
-    //     })
-    // }
-
-    pub fn range(field: &str, gte: impl Serialize, lte: impl Serialize) -> Value {
-        json!({
-            "range": {
-                field: {
-                    "gte": gte,
-                    "lte": lte,
-                }
-            }
-        })
-    }
-
-    pub fn suggest(mut query: String, main_field: &str, all_fields: &[&str]) -> Value {
-        if query.is_empty() {
-            query = "*".to_owned();
-        }
-
-        let generators: Vec<_> = all_fields
-            .iter()
-            .map(|x| {
-                json!({
-                    "field": x,
-                    "suggest_mode": "missing"
-                })
-            })
-            .collect();
-
-        json!({
-            "text": query,
-            "simple_phrase": {
-                "phrase": {
-                    "field": main_field,
-                    "size": 1,
-                    "gram_size": 3,
-                    "direct_generator": generators,
-                    "highlight": {
-                        "pre_tag": "<i>",
-                        "post_tag": "</i>"
-                    }
-                }
-            }
-        })
-    }
 }

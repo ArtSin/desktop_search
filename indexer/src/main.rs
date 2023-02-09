@@ -1,3 +1,5 @@
+#![recursion_limit = "256"]
+
 use std::{net::SocketAddr, sync::Arc, time::Duration};
 
 use axum::{

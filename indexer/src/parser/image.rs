@@ -1,15 +1,13 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use common_lib::elasticsearch::{FileES, ImageData};
+use common_lib::elasticsearch::{FileES, ImageData, ResolutionUnit};
 use serde::Deserialize;
 use serde_with::{serde_as, DisplayFromStr};
 
 use crate::{embeddings::get_image_search_image_embedding, ServerState};
 
 use super::{Metadata, Parser};
-
-pub struct ImageParser;
 
 #[serde_as]
 #[derive(Default, Deserialize)]
@@ -22,7 +20,46 @@ pub struct ImageMetadata {
     #[serde_as(as = "Option<DisplayFromStr>")]
     #[serde(rename = "tiff:ImageLength")]
     height: Option<u32>,
+    /// Resolution unit (inches or centimeters)
+    #[serde_as(as = "Option<DisplayFromStr>")]
+    #[serde(rename = "tiff:ResolutionUnit")]
+    resolution_unit: Option<ResolutionUnit>,
+    /// X resolution in pixels per unit
+    #[serde_as(as = "Option<DisplayFromStr>")]
+    #[serde(rename = "tiff:XResolution")]
+    x_resolution: Option<f32>,
+    /// Y resolution in pixels per unit
+    #[serde_as(as = "Option<DisplayFromStr>")]
+    #[serde(rename = "tiff:YResolution")]
+    y_resolution: Option<f32>,
+    /// F-number
+    #[serde_as(as = "Option<DisplayFromStr>")]
+    #[serde(rename = "exif:FNumber")]
+    f_number: Option<f32>,
+    /// Focal length of the lens in millimeters
+    #[serde_as(as = "Option<DisplayFromStr>")]
+    #[serde(rename = "exif:FocalLength")]
+    focal_length: Option<f32>,
+    /// Exposure time in seconds
+    #[serde_as(as = "Option<DisplayFromStr>")]
+    #[serde(rename = "exif:ExposureTime")]
+    exposure_time: Option<f32>,
+    /// Did the flash fire?
+    #[serde_as(as = "Option<DisplayFromStr>")]
+    #[serde(rename = "exif:Flash")]
+    flash_fired: Option<bool>,
+    /// Camera manufacturer
+    #[serde(rename = "tiff:Make")]
+    image_make: Option<String>,
+    /// Camera model
+    #[serde(rename = "tiff:Model")]
+    image_model: Option<String>,
+    /// Software/firmware name/version
+    #[serde(rename = "tiff:Software")]
+    image_software: Option<String>,
 }
+
+pub struct ImageParser;
 
 #[async_trait]
 impl Parser for ImageParser {
@@ -34,7 +71,7 @@ impl Parser for ImageParser {
         &self,
         state: Arc<ServerState>,
         file: &mut FileES,
-        metadata: &Metadata,
+        metadata: &mut Metadata,
     ) -> anyhow::Result<()> {
         tracing::debug!(
             "Calculating image embedding of file: {}",
@@ -46,10 +83,21 @@ impl Parser for ImageParser {
             get_image_search_image_embedding(&state.reqwest_client, nnserver_url, &file.path)
                 .await?;
 
+        let data = std::mem::take(&mut metadata.image_data);
         file.image_data = ImageData {
             image_embedding: embedding.embedding,
-            width: metadata.image_data.width,
-            height: metadata.image_data.height,
+            width: data.width,
+            height: data.height,
+            resolution_unit: data.resolution_unit,
+            x_resolution: data.x_resolution,
+            y_resolution: data.y_resolution,
+            f_number: data.f_number,
+            focal_length: data.focal_length,
+            exposure_time: data.exposure_time,
+            flash_fired: data.flash_fired,
+            image_make: data.image_make,
+            image_model: data.image_model,
+            image_software: data.image_software,
         };
         Ok(())
     }

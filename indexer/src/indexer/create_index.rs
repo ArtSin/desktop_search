@@ -146,6 +146,7 @@ pub async fn create_index(es_client: &Elasticsearch) -> Result<(), elasticsearch
                         "similarity": "dot_product"
                     },
 
+                    // Fields for image files
                     "image_embedding": {
                         "type": "dense_vector",
                         "dims": 512,
@@ -158,7 +159,76 @@ pub async fn create_index(es_client: &Elasticsearch) -> Result<(), elasticsearch
                     "height": {
                         "type": "integer"
                     },
+                    "resolution_unit": {
+                        "type": "keyword"
+                    },
+                    "x_resolution": {
+                        "type": "float"
+                    },
+                    "y_resolution": {
+                        "type": "float"
+                    },
+                    "f_number": {
+                        "type": "float"
+                    },
+                    "focal_length": {
+                        "type": "float"
+                    },
+                    "exposure_time": {
+                        "type": "float"
+                    },
+                    "flash_fired": {
+                        "type": "boolean"
+                    },
+                    "image_make": {
+                        "type": "text",
+                        "analyzer": "en_ru_analyzer"
+                    },
+                    "image_model": {
+                        "type": "text",
+                        "analyzer": "en_ru_analyzer"
+                    },
+                    "image_software": {
+                        "type": "text",
+                        "analyzer": "en_ru_analyzer"
+                    },
 
+                    // Fields for multimedia files
+                    "artist": {
+                        "type": "text",
+                        "analyzer": "en_ru_analyzer"
+                    },
+                    "album": {
+                        "type": "text",
+                        "analyzer": "en_ru_analyzer"
+                    },
+                    "genre": {
+                        "type": "text",
+                        "analyzer": "en_ru_analyzer"
+                    },
+                    "track_number": {
+                        "type": "text",
+                        "analyzer": "en_ru_analyzer"
+                    },
+                    "disc_number": {
+                        "type": "text",
+                        "analyzer": "en_ru_analyzer"
+                    },
+                    "release_date": {
+                        "type": "text",
+                        "analyzer": "en_ru_analyzer"
+                    },
+                    "duration": {
+                        "type": "float"
+                    },
+                    "audio_sample_rate": {
+                        "type": "integer"
+                    },
+                    "audio_channel_type": {
+                        "type": "keyword"
+                    },
+
+                    // Fields for document files
                     "title": {
                         "type": "text",
                         "analyzer": "en_ru_analyzer"

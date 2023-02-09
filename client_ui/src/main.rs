@@ -1,4 +1,5 @@
 mod app;
+mod formatting;
 mod search;
 mod settings;
 mod status;

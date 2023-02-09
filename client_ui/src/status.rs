@@ -5,7 +5,10 @@ use sycamore::{futures::spawn_local_scoped, prelude::*};
 use url::Url;
 use wasm_bindgen::JsValue;
 
-use crate::app::{fetch_empty, widgets::StatusDialogState};
+use crate::{
+    app::{fetch_empty, widgets::StatusDialogState},
+    formatting::{duration_str_from_seconds, file_size_str},
+};
 
 async fn index() -> Result<(), JsValue> {
     fetch_empty("/index", "PATCH", None::<&()>).await
@@ -135,13 +138,8 @@ pub fn Status<'a, G: Html>(
                                         (data.sent) " изменений"
                                     }
                                     (if let Some(duration) = data.duration {
-                                        let total_s = duration.as_secs();
-                                        let (h, m, s) = (total_s / 3600, (total_s / 60) % 60, total_s % 60);
-                                        view! { cx,
-                                            p {
-                                                "Прошло " (h) " ч " (m) " мин " (s) " с"
-                                            }
-                                        }
+                                        let duration_str = duration_str_from_seconds(duration.as_secs_f32());
+                                        view! { cx, p { "Прошло " (duration_str) } }
                                     } else {
                                         view! { cx, }
                                     })
@@ -178,8 +176,7 @@ pub fn Status<'a, G: Html>(
                             "Количество файлов в индексе: " (index_stats.get().doc_cnt)
                         }
                         p {
-                            "Размер индекса (МиБ): "
-                            (format!("{:.4}", (index_stats.get().index_size as f64) / 1024.0 / 1024.0))
+                            "Размер индекса: " (file_size_str(index_stats.get().index_size))
                         }
                     }
 

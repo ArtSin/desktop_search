@@ -1,4 +1,9 @@
-use std::{fmt::Display, str::FromStr};
+use std::{
+    cmp::Eq,
+    fmt::{Debug, Display},
+    hash::Hash,
+    str::FromStr,
+};
 
 use chrono::{DateTime, Local, TimeZone, Utc};
 use sycamore::prelude::*;
@@ -42,6 +47,116 @@ pub fn CheckboxFilter<'a, G: Html>(cx: Scope<'a>, props: CheckboxFilterProps<'a>
         div(class="radio_checkbox_field") {
             input(type="checkbox", id=props.id, name=props.id, bind:checked=props.value_enabled) {}
             label(for=props.id) { (props.text) }
+        }
+    }
+}
+
+#[derive(Prop)]
+pub struct CheckboxOptionFilterProps<'a> {
+    pub text: &'static str,
+    pub id: &'static str,
+    pub value_enabled: &'a Signal<Option<bool>>,
+}
+
+#[component]
+pub fn CheckboxOptionFilter<'a, G: Html>(
+    cx: Scope<'a>,
+    props: CheckboxOptionFilterProps<'a>,
+) -> View<G> {
+    let enabled = create_signal(cx, false);
+    let value = create_signal(cx, false);
+
+    create_effect(cx, || {
+        props.value_enabled.set(enabled.get().then(|| *value.get()));
+    });
+
+    view! { cx,
+        div(class="radio_checkbox_field") {
+            input(type="checkbox", id=(props.id.to_owned() + "_enabled"),
+                    name=(props.id.to_owned() + "_enabled"), bind:checked=enabled)
+            label(for=(props.id.to_owned() +  "_enabled")) { (props.text) }
+            input(type="checkbox", id=(props.id.to_owned() + "_value"),
+                    name=(props.id.to_owned() + "_value"), disabled=!*enabled.get(), bind:checked=value)
+        }
+    }
+}
+
+#[derive(Prop)]
+pub struct SelectFilterProps<'a, T> {
+    pub text: &'static str,
+    pub id: &'static str,
+    pub options: &'a ReadSignal<Vec<(T, &'static str)>>,
+    pub value: &'a Signal<T>,
+}
+
+#[component]
+pub fn SelectFilter<'a, T, G>(cx: Scope<'a>, props: SelectFilterProps<'a, T>) -> View<G>
+where
+    T: Copy + Eq + Hash + Display + FromStr,
+    <T as FromStr>::Err: Debug,
+    G: Html,
+{
+    let value_str = create_signal(cx, props.options.get().first().unwrap().0.to_string());
+    create_effect(cx, || props.value.set(value_str.get().parse().unwrap()));
+
+    view! { cx,
+        div(class="filter_field") {
+            label(for=props.id) { (props.text) }
+            select(id=props.id, name=props.id, bind:value=value_str) {
+                Keyed(
+                    iterable=props.options,
+                    key=|item| item.0,
+                    view=move |cx, item| {
+                        view! { cx,
+                            option(value=(item.0)) { (item.1) }
+                        }
+                    }
+                )
+            }
+        }
+    }
+}
+
+#[derive(Prop)]
+pub struct SelectOptionFilterProps<'a, T> {
+    pub text: &'static str,
+    pub id: &'static str,
+    pub options: &'a ReadSignal<Vec<(T, &'static str)>>,
+    pub value: &'a Signal<Option<T>>,
+}
+
+#[component]
+pub fn SelectOptionFilter<'a, T, G>(cx: Scope<'a>, props: SelectOptionFilterProps<'a, T>) -> View<G>
+where
+    T: Copy + Eq + Hash + Display + FromStr,
+    <T as FromStr>::Err: Debug,
+    G: Html,
+{
+    let enabled = create_signal(cx, false);
+    let value_str = create_signal(cx, props.options.get().first().unwrap().0.to_string());
+    create_effect(cx, || {
+        props
+            .value
+            .set(enabled.get().then(|| value_str.get().parse().unwrap()))
+    });
+
+    view! { cx,
+        div(class="filter_field") {
+            input(type="checkbox", id=(props.id.to_owned() + "_enabled"),
+                    name=(props.id.to_owned() + "_enabled"), bind:checked=enabled)
+            label(for=(props.id.to_owned() + "_enabled")) { (props.text) }
+            select(id=(props.id.to_owned() + "_value"), name=(props.id.to_owned() + "_value"),
+                    disabled=!*enabled.get(), bind:value=value_str) {
+                Keyed(
+                    iterable=props.options,
+                    key=|item| item.0,
+                    view=move |cx, item| {
+                        view! { cx,
+                            option(value=(item.0)) { (item.1) }
+                        }
+                    }
+                )
+            }
         }
     }
 }

@@ -20,7 +20,7 @@ impl Parser for TextParser {
         &self,
         state: Arc<ServerState>,
         file: &mut FileES,
-        metadata: &Metadata,
+        metadata: &mut Metadata,
     ) -> anyhow::Result<()> {
         file.content = metadata.content.clone();
 

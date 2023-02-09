@@ -64,6 +64,7 @@ impl TryFrom<FileInfo> for FileES {
             text_data: Default::default(),
             image_data: Default::default(),
             document_data: Default::default(),
+            multimedia_data: Default::default(),
         })
     }
 }
