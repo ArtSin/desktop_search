@@ -8,6 +8,7 @@ use common_lib::{
     settings::Settings,
 };
 use elasticsearch::{Elasticsearch, SearchParts};
+use regex::Regex;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
@@ -138,14 +139,15 @@ impl FilesDiff {
 
 /// Recursively iterates list of directories and returns indexable files.
 /// Inaccessible files are skipped
-pub fn get_file_system_files_list(settings: &Settings) -> Vec<FileInfo> {
+pub fn get_file_system_files_list(settings: &Settings) -> anyhow::Result<Vec<FileInfo>> {
     let indexing_directories_hs: HashSet<_> = settings
         .indexing_directories
         .iter()
         .map(|x| x.path.as_path())
         .collect();
+    let exclude_file_regex = Regex::new(&settings.exclude_file_regex)?;
 
-    settings
+    Ok(settings
         .indexing_directories
         .iter()
         .filter(|dir| !dir.exclude)
@@ -153,7 +155,9 @@ pub fn get_file_system_files_list(settings: &Settings) -> Vec<FileInfo> {
             WalkDir::new(&dir.path)
                 .into_iter()
                 .filter_entry(|e| {
-                    e.path() == dir.path || !indexing_directories_hs.contains(e.path())
+                    (e.path() == dir.path || !indexing_directories_hs.contains(e.path()))
+                        && (!e.path().is_file()
+                            || !exclude_file_regex.is_match(&e.path().to_string_lossy()))
                 })
                 .filter_map(|entry_res| {
                     let entry = match entry_res {
@@ -186,7 +190,7 @@ pub fn get_file_system_files_list(settings: &Settings) -> Vec<FileInfo> {
                     ))
                 })
         })
-        .collect()
+        .collect())
 }
 
 /// Returns all files from Elasticsearch index

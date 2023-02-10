@@ -5,7 +5,9 @@ use wasm_bindgen::JsValue;
 
 use crate::app::{fetch, fetch_empty, widgets::StatusDialogState};
 
-use self::widgets::{CheckboxSetting, DirectoryItem, DirectoryList, NumberSetting, TextSetting};
+use self::widgets::{
+    CheckboxSetting, DirectoryItem, DirectoryList, NumberSetting, SimpleTextSetting, TextSetting,
+};
 
 mod widgets;
 
@@ -28,6 +30,7 @@ trait SettingsUi {
     fn get_nnserver_url_str(&self) -> String;
     fn get_open_on_start(&self) -> bool;
     fn get_indexing_directories_dir_items(&self) -> Vec<DirectoryItem>;
+    fn get_exclude_file_regex(&self) -> String;
     fn get_max_file_size_str(&self) -> String;
     fn get_nnserver_batch_size_str(&self) -> String;
     fn get_elasticsearch_batch_size_str(&self) -> String;
@@ -52,6 +55,7 @@ trait SettingsUi {
         nnserver_url_str: &str,
         open_on_start: bool,
         indexing_directories_dir_items: &[DirectoryItem],
+        exclude_file_regex: &str,
         max_file_size_str: &str,
         nnserver_batch_size_str: &str,
         elasticsearch_batch_size_str: &str,
@@ -79,6 +83,9 @@ impl SettingsUi for Settings {
             .iter()
             .map(|p| DirectoryItem::new(p.clone()))
             .collect()
+    }
+    fn get_exclude_file_regex(&self) -> String {
+        self.exclude_file_regex.clone()
     }
     fn get_max_file_size_str(&self) -> String {
         ((self.max_file_size as f64) / 1024.0 / 1024.0).to_string()
@@ -149,6 +156,7 @@ impl SettingsUi for Settings {
         nnserver_url_str: &str,
         open_on_start: bool,
         indexing_directories_dir_items: &[DirectoryItem],
+        exclude_file_regex: &str,
         max_file_size_str: &str,
         nnserver_batch_size_str: &str,
         elasticsearch_batch_size_str: &str,
@@ -165,6 +173,7 @@ impl SettingsUi for Settings {
                 .iter()
                 .map(|f| f.dir.clone())
                 .collect(),
+            exclude_file_regex: exclude_file_regex.to_owned(),
             max_file_size: (max_file_size_str.parse::<f64>().unwrap() * 1024.0 * 1024.0) as u64,
             nnserver_batch_size: nnserver_batch_size_str.parse().unwrap(),
             elasticsearch_batch_size: elasticsearch_batch_size_str.parse().unwrap(),
@@ -196,6 +205,7 @@ pub fn Settings<'a, G: Html>(
     let open_on_start = create_signal(cx, settings.get().get_open_on_start());
     let indexing_directories =
         create_signal(cx, settings.get().get_indexing_directories_dir_items());
+    let exclude_file_regex = create_signal(cx, settings.get().get_exclude_file_regex());
     let max_file_size_str = create_signal(cx, settings.get().get_max_file_size_str());
     let nnserver_batch_size_str = create_signal(cx, settings.get().get_nnserver_batch_size_str());
     let elasticsearch_batch_size_str =
@@ -250,6 +260,7 @@ pub fn Settings<'a, G: Html>(
         nnserver_url_str.set(settings.get().get_nnserver_url_str());
         open_on_start.set(settings.get().get_open_on_start());
         indexing_directories.set(settings.get().get_indexing_directories_dir_items());
+        exclude_file_regex.set(settings.get().get_exclude_file_regex());
         max_file_size_str.set(settings.get().get_max_file_size_str());
         nnserver_batch_size_str.set(settings.get().get_nnserver_batch_size_str());
         elasticsearch_batch_size_str.set(settings.get().get_elasticsearch_batch_size_str());
@@ -289,6 +300,7 @@ pub fn Settings<'a, G: Html>(
                 &nnserver_url_str.get(),
                 *open_on_start.get(),
                 &indexing_directories.get(),
+                &exclude_file_regex.get(),
                 &max_file_size_str.get(),
                 &nnserver_batch_size_str.get(),
                 &elasticsearch_batch_size_str.get(),
@@ -329,6 +341,8 @@ pub fn Settings<'a, G: Html>(
                         legend { "Индексируемые папки" }
                         DirectoryList(directory_list=indexing_directories,
                             status_dialog_state=status_dialog_state)
+                        SimpleTextSetting(id="exclude_file_regex",
+                            label="Регулярное выражение для исключения файлов: ", value=exclude_file_regex)
                     }
 
                     fieldset {

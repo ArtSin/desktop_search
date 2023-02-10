@@ -6,6 +6,24 @@ use wasm_bindgen::JsValue;
 use crate::app::{fetch, widgets::StatusDialogState};
 
 #[derive(Prop)]
+pub struct SimpleTextSettingProps<'a> {
+    pub id: &'static str,
+    pub label: &'static str,
+    pub value: &'a Signal<String>,
+}
+
+#[component]
+pub fn SimpleTextSetting<'a, G: Html>(cx: Scope<'a>, props: SimpleTextSettingProps<'a>) -> View<G> {
+    let value = props.value;
+    view! { cx,
+        div(class="setting") {
+            label(for=props.id) { (props.label) }
+            input(type="text", id=props.id, name=props.id, bind:value=value) {}
+        }
+    }
+}
+
+#[derive(Prop)]
 pub struct TextSettingProps<'a> {
     pub id: &'static str,
     pub label: &'static str,

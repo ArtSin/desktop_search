@@ -190,10 +190,18 @@ pub async fn index(State(state): State<Arc<ServerState>>) -> (StatusCode, String
         let (file_system_files, elasticsearch_files) =
             tokio::join!(file_system_files_f, elasticsearch_files_f);
 
-        let file_system_files = file_system_files.unwrap_or_log();
+        let file_system_files = match file_system_files.unwrap_or_log() {
+            Ok(x) => x,
+            Err(e) => {
+                on_event(Arc::clone(&state), IndexingEvent::DiffFailed(e.to_string())).await;
+                tracing::error!("Error getting indexable files: {}", e);
+                return;
+            }
+        };
         let elasticsearch_files = match elasticsearch_files {
             Ok(x) => x,
             Err(e) => {
+                on_event(Arc::clone(&state), IndexingEvent::DiffFailed(e.to_string())).await;
                 tracing::error!("Error reading file info from Elasticsearch: {}", e);
                 return;
             }

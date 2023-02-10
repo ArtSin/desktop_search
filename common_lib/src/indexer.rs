@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum IndexingEvent {
     Started,
+    DiffFailed(String),
     DiffCalculated {
         to_add: usize,
         to_remove: usize,
@@ -30,6 +31,7 @@ pub struct IndexingStatusData {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum IndexingStatus {
     NotStarted,
+    DiffFailed(String),
     CalculatingDiff,
     Indexing(IndexingStatusData),
     Finished(IndexingStatusData),
@@ -39,6 +41,10 @@ impl Display for IndexingStatus {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::NotStarted | Self::Finished(_) => writeln!(f, "индексация не идёт"),
+            Self::DiffFailed(e) => writeln!(
+                f,
+                "не удалось вычислить разность между файловой системой и индексом: {e}"
+            ),
             Self::CalculatingDiff => {
                 writeln!(f, "вычисление разности между файловой системой и индексом")
             }
@@ -55,6 +61,7 @@ impl IndexingStatus {
     pub fn process_event(&mut self, event: IndexingEvent) {
         match event {
             IndexingEvent::Started => *self = Self::CalculatingDiff,
+            IndexingEvent::DiffFailed(e) => *self = Self::DiffFailed(e),
             IndexingEvent::DiffCalculated {
                 to_add,
                 to_remove,

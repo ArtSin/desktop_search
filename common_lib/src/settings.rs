@@ -10,6 +10,7 @@ pub struct Settings {
     pub tika_url: Url,
     pub nnserver_url: Url,
     pub open_on_start: bool,
+    pub exclude_file_regex: String,
     pub max_file_size: u64,
     pub nnserver_batch_size: usize,
     pub elasticsearch_batch_size: usize,
@@ -27,6 +28,7 @@ impl Default for Settings {
             nnserver_url: Url::parse("http://127.0.0.1:10000").unwrap(),
             open_on_start: true,
             indexing_directories: Vec::new(),
+            exclude_file_regex: r"[/\\]\.git[/\\]|\.pygtex$|\.pygstyle$|\.aux$|\.bbl$|\.bcf$|\.blg$|\.synctex\.gz$|\.toc$".to_owned(),
             max_file_size: 50 * 1024 * 1024, // 50 MiB
             nnserver_batch_size: 32,
             elasticsearch_batch_size: 100,
