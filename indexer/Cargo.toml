@@ -36,3 +36,7 @@ rfd = { version = "0.11.0", default-features = false, features = [
     "xdg-portal",
 ] }
 regex = "1.7.1"
+notify = { version = "5.1.0", default-features = false, features = [
+    "macos_kqueue",
+] }
+notify-debouncer-mini = { version = "0.2.1", default-features = false }

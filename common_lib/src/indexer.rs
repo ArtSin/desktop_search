@@ -55,7 +55,7 @@ impl Display for IndexingStatus {
 
 impl IndexingStatus {
     pub fn can_start(&self) -> bool {
-        !matches!(self, Self::Indexing(_))
+        !matches!(self, Self::CalculatingDiff | Self::Indexing(_))
     }
 
     pub fn process_event(&mut self, event: IndexingEvent) {

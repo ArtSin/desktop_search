@@ -11,6 +11,8 @@ pub struct Settings {
     pub nnserver_url: Url,
     pub open_on_start: bool,
     pub exclude_file_regex: String,
+    pub watcher_enabled: bool,
+    pub debouncer_timeout: f32,
     pub max_file_size: u64,
     pub nnserver_batch_size: usize,
     pub elasticsearch_batch_size: usize,
@@ -29,6 +31,8 @@ impl Default for Settings {
             open_on_start: true,
             indexing_directories: Vec::new(),
             exclude_file_regex: r"[/\\]\.git[/\\]|\.pygtex$|\.pygstyle$|\.aux$|\.bbl$|\.bcf$|\.blg$|\.synctex\.gz$|\.toc$".to_owned(),
+            watcher_enabled: true,
+            debouncer_timeout: 5.0,
             max_file_size: 50 * 1024 * 1024, // 50 MiB
             nnserver_batch_size: 32,
             elasticsearch_batch_size: 100,

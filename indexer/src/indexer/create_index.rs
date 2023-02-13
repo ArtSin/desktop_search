@@ -104,6 +104,9 @@ pub async fn create_index(es_client: &Elasticsearch) -> Result<(), elasticsearch
                         "type": "text",
                         "analyzer": "path_en_ru_analyzer",
                         "fields": {
+                            "keyword": {
+                                "type": "keyword"
+                            },
                             "shingles": {
                                 "type": "text",
                                 "analyzer": "path_en_ru_analyzer_shingles"

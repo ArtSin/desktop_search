@@ -10,6 +10,8 @@ use axum::{
 };
 use common_lib::indexer::{IndexingEvent, IndexingStatus};
 use elasticsearch::{http::transport::Transport, Elasticsearch};
+use notify::RecommendedWatcher;
+use notify_debouncer_mini::Debouncer;
 use tokio::{
     signal,
     sync::{broadcast, RwLock},
@@ -24,6 +26,7 @@ use tracing_unwrap::ResultExt;
 use crate::{
     indexer::create_index::create_index,
     settings::{read_settings_file, InternalSettings},
+    watcher::start_watcher,
 };
 
 mod actions;
@@ -34,6 +37,7 @@ mod parser;
 mod scanner;
 mod search;
 mod settings;
+mod watcher;
 
 pub struct ServerState {
     settings: RwLock<InternalSettings>,
@@ -41,6 +45,7 @@ pub struct ServerState {
     reqwest_client: reqwest::Client,
     indexing_status: RwLock<IndexingStatus>,
     indexing_events: broadcast::Sender<IndexingEvent>,
+    watcher_debouncer: RwLock<Option<Debouncer<RecommendedWatcher>>>,
 }
 
 #[tokio::main]
@@ -69,7 +74,24 @@ async fn main() {
         .expect_or_log("Can't create Elasticsearch index");
 
     let open_on_start = settings.other.open_on_start;
+    let watcher_enabled = settings.other.watcher_enabled;
     let indexing_events_channel_capacity = 2 * settings.other.nnserver_batch_size;
+
+    let server_state = Arc::new(ServerState {
+        settings: RwLock::new(settings),
+        es_client,
+        reqwest_client: reqwest::Client::builder()
+            .timeout(Duration::from_secs(10))
+            .build()
+            .unwrap_or_log(),
+        indexing_status: RwLock::new(IndexingStatus::NotStarted),
+        indexing_events: broadcast::channel(indexing_events_channel_capacity).0,
+        watcher_debouncer: RwLock::new(None),
+    });
+
+    if watcher_enabled {
+        start_watcher(Arc::clone(&server_state)).await;
+    }
 
     let app = Router::new()
         .route(
@@ -88,16 +110,7 @@ async fn main() {
         .route("/pick_folder", post(actions::pick_folder))
         .route("/file", get(file_server::get_file))
         .fallback(file_server::get_client_file)
-        .with_state(Arc::new(ServerState {
-            settings: RwLock::new(settings),
-            es_client,
-            reqwest_client: reqwest::Client::builder()
-                .timeout(Duration::from_secs(10))
-                .build()
-                .unwrap_or_log(),
-            indexing_status: RwLock::new(IndexingStatus::NotStarted),
-            indexing_events: broadcast::channel(indexing_events_channel_capacity).0,
-        }))
+        .with_state(server_state)
         .layer(
             ServiceBuilder::new()
                 .layer(HandleErrorLayer::new(|error: BoxError| async move {

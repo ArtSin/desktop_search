@@ -5,7 +5,7 @@ use common_lib::{
     elasticsearch::{
         FileES, ELASTICSEARCH_INDEX, ELASTICSEARCH_MAX_SIZE, ELASTICSEARCH_PIT_KEEP_ALIVE,
     },
-    settings::Settings,
+    settings::{IndexingDirectory, Settings},
 };
 use elasticsearch::{Elasticsearch, SearchParts};
 use regex::Regex;
@@ -137,18 +137,44 @@ impl FilesDiff {
     }
 }
 
-/// Recursively iterates list of directories and returns indexable files.
-/// Inaccessible files are skipped
-pub fn get_file_system_files_list(settings: &Settings) -> anyhow::Result<Vec<FileInfo>> {
-    let indexing_directories_hs: HashSet<_> = settings
-        .indexing_directories
+fn file_info_from_path(settings: &Settings, path: PathBuf) -> Option<FileInfo> {
+    tracing::debug!("Scanning path: {}", path.display());
+
+    let metadata = match std::fs::metadata(&path) {
+        Ok(x) => x,
+        Err(e) => {
+            tracing::error!("Error getting file metadata: {}", e);
+            return None;
+        }
+    };
+    if !metadata.file_type().is_file() {
+        return None;
+    }
+
+    Some(FileInfo::new(
+        path,
+        metadata.modified().unwrap_or_log().into(),
+        metadata.len(),
+        settings,
+    ))
+}
+
+pub fn process_indexable_files<T, F>(
+    settings: &Settings,
+    indexing_directories: &[IndexingDirectory],
+    process: F,
+    allow_errors: bool,
+) -> anyhow::Result<Vec<T>>
+where
+    F: Fn(&Settings, PathBuf) -> Option<T>,
+{
+    let indexing_directories_hs: HashSet<_> = indexing_directories
         .iter()
         .map(|x| x.path.as_path())
         .collect();
     let exclude_file_regex = Regex::new(&settings.exclude_file_regex)?;
 
-    Ok(settings
-        .indexing_directories
+    Ok(indexing_directories
         .iter()
         .filter(|dir| !dir.exclude)
         .flat_map(|dir| {
@@ -163,39 +189,54 @@ pub fn get_file_system_files_list(settings: &Settings) -> anyhow::Result<Vec<Fil
                     let entry = match entry_res {
                         Ok(x) => x,
                         Err(e) => {
-                            tracing::error!("Error while scanning file system: {}", e);
+                            if allow_errors {
+                                tracing::debug!("Error while scanning file system: {}", e);
+                            } else {
+                                tracing::error!("Error while scanning file system: {}", e);
+                            }
                             return None;
                         }
                     };
 
-                    let path = entry.path();
-                    tracing::debug!("Scanning path: {}", path.display());
-                    if !entry.file_type().is_file() {
-                        return None;
-                    }
-
-                    let metadata = match std::fs::metadata(path) {
-                        Ok(x) => x,
-                        Err(e) => {
-                            tracing::error!("Error getting file metadata: {}", e);
-                            return None;
-                        }
-                    };
-
-                    Some(FileInfo::new(
-                        path.to_path_buf(),
-                        metadata.modified().unwrap_or_log().into(),
-                        metadata.len(),
-                        settings,
-                    ))
+                    process(settings, entry.into_path())
                 })
         })
         .collect())
 }
 
+/// Recursively iterates list of directories and returns indexable files.
+/// Inaccessible files are skipped
+pub fn get_file_system_files_list(settings: &Settings) -> anyhow::Result<Vec<FileInfo>> {
+    process_indexable_files(
+        settings,
+        &settings.indexing_directories,
+        file_info_from_path,
+        false,
+    )
+}
+
+pub fn get_file_system_partial_files_list(
+    settings: &Settings,
+    paths: Vec<PathBuf>,
+) -> anyhow::Result<Vec<FileInfo>> {
+    process_indexable_files(
+        settings,
+        &paths
+            .iter()
+            .map(|path| IndexingDirectory {
+                path: path.to_path_buf(),
+                exclude: false,
+            })
+            .collect::<Vec<_>>(),
+        file_info_from_path,
+        true,
+    )
+}
+
 /// Returns all files from Elasticsearch index
 pub async fn get_elasticsearch_files_list(
     es_client: &Elasticsearch,
+    paths: Option<&[PathBuf]>,
 ) -> Result<Vec<FileInfo>, elasticsearch::Error> {
     #[allow(clippy::upper_case_acronyms)]
     #[derive(Serialize, Deserialize)]
@@ -226,6 +267,17 @@ pub async fn get_elasticsearch_files_list(
     let mut files = Vec::new();
 
     loop {
+        let query = match paths {
+            Some(paths) => json!({
+                "terms": {
+                    "path.keyword": paths
+                }
+            }),
+            None => json!({
+                "match_all": {}
+            }),
+        };
+
         let response: Value = es_client
             .search(SearchParts::None)
             .size(ELASTICSEARCH_MAX_SIZE)
@@ -234,9 +286,7 @@ pub async fn get_elasticsearch_files_list(
                 _source: json!({
                     "includes": ["path", "modified", "size"]
                 }),
-                query: json!({
-                    "match_all": {}
-                }),
+                query,
                 pit: json!({
                     "id": pit.id,
                     "keep_alive": ELASTICSEARCH_PIT_KEEP_ALIVE
@@ -264,6 +314,9 @@ pub async fn get_elasticsearch_files_list(
             })
             .collect();
         files.append(&mut new_files);
+        if paths.is_some() {
+            break;
+        }
     }
     es_client.close_point_in_time().body(pit).send().await?;
 

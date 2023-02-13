@@ -11,6 +11,8 @@ use self::widgets::{
 
 mod widgets;
 
+const DEBOUNCER_TIMEOUT_MIN: f32 = 0.1;
+const DEBOUNCER_TIMEOUT_MAX: f32 = 3600.0;
 pub const MAX_FILE_SIZE_MIN: f64 = 0.01;
 pub const MAX_FILE_SIZE_MAX: f64 = 1000.0;
 const NNSERVER_BATCH_SIZE_MIN: usize = 1;
@@ -31,6 +33,8 @@ trait SettingsUi {
     fn get_open_on_start(&self) -> bool;
     fn get_indexing_directories_dir_items(&self) -> Vec<DirectoryItem>;
     fn get_exclude_file_regex(&self) -> String;
+    fn get_watcher_enabled(&self) -> bool;
+    fn get_debouncer_timeout_str(&self) -> String;
     fn get_max_file_size_str(&self) -> String;
     fn get_nnserver_batch_size_str(&self) -> String;
     fn get_elasticsearch_batch_size_str(&self) -> String;
@@ -41,6 +45,7 @@ trait SettingsUi {
     fn valid_elasticsearch_url(elasticsearch_url_str: &str) -> bool;
     fn valid_tika_url(tika_url_str: &str) -> bool;
     fn valid_nnserver_url(nnserver_url_str: &str) -> bool;
+    fn valid_debouncer_timeout(debouncer_timeout_str: &str) -> bool;
     fn valid_max_file_size(max_file_size_str: &str) -> bool;
     fn valid_nnserver_batch_size(nnserver_batch_size_str: &str) -> bool;
     fn valid_elasticsearch_batch_size(elasticsearch_batch_size_str: &str) -> bool;
@@ -56,6 +61,8 @@ trait SettingsUi {
         open_on_start: bool,
         indexing_directories_dir_items: &[DirectoryItem],
         exclude_file_regex: &str,
+        watcher_enabled: bool,
+        debouncer_timeout_str: &str,
         max_file_size_str: &str,
         nnserver_batch_size_str: &str,
         elasticsearch_batch_size_str: &str,
@@ -87,6 +94,12 @@ impl SettingsUi for Settings {
     fn get_exclude_file_regex(&self) -> String {
         self.exclude_file_regex.clone()
     }
+    fn get_watcher_enabled(&self) -> bool {
+        self.watcher_enabled
+    }
+    fn get_debouncer_timeout_str(&self) -> String {
+        self.debouncer_timeout.to_string()
+    }
     fn get_max_file_size_str(&self) -> String {
         ((self.max_file_size as f64) / 1024.0 / 1024.0).to_string()
     }
@@ -114,6 +127,12 @@ impl SettingsUi for Settings {
     }
     fn valid_nnserver_url(nnserver_url_str: &str) -> bool {
         Url::parse(nnserver_url_str).is_ok()
+    }
+    fn valid_debouncer_timeout(debouncer_timeout_str: &str) -> bool {
+        debouncer_timeout_str
+            .parse()
+            .map(|x: f32| (DEBOUNCER_TIMEOUT_MIN..=DEBOUNCER_TIMEOUT_MAX).contains(&x))
+            == Ok(true)
     }
     fn valid_max_file_size(max_file_size_str: &str) -> bool {
         max_file_size_str
@@ -157,6 +176,8 @@ impl SettingsUi for Settings {
         open_on_start: bool,
         indexing_directories_dir_items: &[DirectoryItem],
         exclude_file_regex: &str,
+        watcher_enabled: bool,
+        debouncer_timeout_str: &str,
         max_file_size_str: &str,
         nnserver_batch_size_str: &str,
         elasticsearch_batch_size_str: &str,
@@ -174,6 +195,8 @@ impl SettingsUi for Settings {
                 .map(|f| f.dir.clone())
                 .collect(),
             exclude_file_regex: exclude_file_regex.to_owned(),
+            watcher_enabled,
+            debouncer_timeout: debouncer_timeout_str.parse().unwrap(),
             max_file_size: (max_file_size_str.parse::<f64>().unwrap() * 1024.0 * 1024.0) as u64,
             nnserver_batch_size: nnserver_batch_size_str.parse().unwrap(),
             elasticsearch_batch_size: elasticsearch_batch_size_str.parse().unwrap(),
@@ -206,6 +229,8 @@ pub fn Settings<'a, G: Html>(
     let indexing_directories =
         create_signal(cx, settings.get().get_indexing_directories_dir_items());
     let exclude_file_regex = create_signal(cx, settings.get().get_exclude_file_regex());
+    let watcher_enabled = create_signal(cx, settings.get().get_watcher_enabled());
+    let debouncer_timeout_str = create_signal(cx, settings.get().get_debouncer_timeout_str());
     let max_file_size_str = create_signal(cx, settings.get().get_max_file_size_str());
     let nnserver_batch_size_str = create_signal(cx, settings.get().get_nnserver_batch_size_str());
     let elasticsearch_batch_size_str =
@@ -223,6 +248,9 @@ pub fn Settings<'a, G: Html>(
     let tika_url_valid = create_memo(cx, || Settings::valid_tika_url(&tika_url_str.get()));
     let nnserver_url_valid =
         create_memo(cx, || Settings::valid_nnserver_url(&nnserver_url_str.get()));
+    let debouncer_timeout_valid = create_memo(cx, || {
+        Settings::valid_debouncer_timeout(&debouncer_timeout_str.get())
+    });
     let max_file_size_valid = create_memo(cx, || {
         Settings::valid_max_file_size(&max_file_size_str.get())
     });
@@ -245,6 +273,7 @@ pub fn Settings<'a, G: Html>(
         !*elasticsearch_url_valid.get()
             || !*tika_url_valid.get()
             || !*nnserver_url_valid.get()
+            || !*debouncer_timeout_valid.get()
             || !*max_file_size_valid.get()
             || !*nnserver_batch_size_valid.get()
             || !*elasticsearch_batch_size_valid.get()
@@ -301,6 +330,8 @@ pub fn Settings<'a, G: Html>(
                 *open_on_start.get(),
                 &indexing_directories.get(),
                 &exclude_file_regex.get(),
+                *watcher_enabled.get(),
+                &debouncer_timeout_str.get(),
                 &max_file_size_str.get(),
                 &nnserver_batch_size_str.get(),
                 &elasticsearch_batch_size_str.get(),
@@ -347,6 +378,10 @@ pub fn Settings<'a, G: Html>(
 
                     fieldset {
                         legend { "Настройки индексации" }
+                        CheckboxSetting(id="watcher_enabled", label="Отслеживать изменения файлов: ",
+                            value=watcher_enabled)
+                        NumberSetting(id="debouncer_timeout", label="Время задержки событий файловой системы (с): ",
+                            value=debouncer_timeout_str, valid=debouncer_timeout_valid)
                         NumberSetting(id="max_file_size", label="Максимальный размер файла (МиБ): ",
                             value=max_file_size_str, valid=max_file_size_valid)
                         NumberSetting(id="nnserver_batch_size", label="Максимальное количество одновременно обрабатываемых документов: ",
