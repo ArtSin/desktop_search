@@ -30,11 +30,11 @@ pub async fn start_watcher(state: Arc<ServerState>) {
         &state.settings.read().await.other,
         &state.settings.read().await.other.indexing_directories,
         |_, path| Some(path),
+        true,
         false,
     )
     .expect_or_log("Can't add paths to watcher")
     {
-        // TODO: add watch flag to indexing directories
         if let Err(e) = debouncer
             .watcher()
             .watch(&path, RecursiveMode::NonRecursive)
@@ -73,9 +73,11 @@ async fn event_handler(
                                     .map(|path| IndexingDirectory {
                                         path: path.to_path_buf(),
                                         exclude: false,
+                                        watch: true,
                                     })
                                     .collect::<Vec<_>>(),
                                 |_, path| Some(path),
+                                true,
                                 true,
                             )
                             .expect_or_log("Can't add paths to watcher")

@@ -74,7 +74,7 @@ pub struct CheckboxSettingProps<'a> {
 pub fn CheckboxSetting<'a, G: Html>(cx: Scope<'a>, props: CheckboxSettingProps<'a>) -> View<G> {
     let value = props.value;
     view! { cx,
-        div(class="checkbox_setting") {
+        div(class="setting checkbox_setting") {
             label(for=props.id) { (props.label) }
             input(type="checkbox", id=props.id, name=props.id, bind:checked=value) {}
         }
@@ -108,10 +108,14 @@ pub fn DirectoryList<'a, G: Html>(
 ) -> View<G> {
     let curr_directory = create_signal(cx, IndexingDirectory::default());
     let curr_directory_exclude_str = create_signal(cx, "false".to_owned());
+    let curr_directory_watch = create_signal(cx, false);
     let curr_directory_empty = create_memo(cx, || curr_directory.get().path.as_os_str().is_empty());
 
     create_effect(cx, || {
         curr_directory.modify().exclude = curr_directory_exclude_str.get().parse().unwrap();
+    });
+    create_effect(cx, || {
+        curr_directory.modify().watch = *curr_directory_watch.get();
     });
 
     let select_item = move |_| {
@@ -151,6 +155,7 @@ pub fn DirectoryList<'a, G: Html>(
                     div(class="setting") {
                         input(type="text", readonly=true, value=item.dir.path.display()) {}
                         p { (if item.dir.exclude { "Исключено" } else { "Включено" }) }
+                        p { (if item.dir.watch { "Отслеживается" } else { "Не отслеживается" }) }
                         button(type="button", on:click=delete_item) { "➖" }
                     }
                 }
@@ -164,6 +169,9 @@ pub fn DirectoryList<'a, G: Html>(
                 option(selected=true, value="false") { "Включить" }
                 option(value="true") { "Исключить" }
             }
+            input(type="checkbox", id="curr_directory_watch", name="curr_directory_watch",
+                bind:checked=curr_directory_watch)
+            label(for="curr_directory_watch") { "Отслеживать" }
             button(type="button", on:click=add_item, disabled=*curr_directory_empty.get()) { "➕" }
         }
     }

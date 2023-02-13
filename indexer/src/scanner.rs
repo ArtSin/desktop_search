@@ -163,6 +163,7 @@ pub fn process_indexable_files<T, F>(
     settings: &Settings,
     indexing_directories: &[IndexingDirectory],
     process: F,
+    exclude_non_watching: bool,
     allow_errors: bool,
 ) -> anyhow::Result<Vec<T>>
 where
@@ -176,7 +177,7 @@ where
 
     Ok(indexing_directories
         .iter()
-        .filter(|dir| !dir.exclude)
+        .filter(|dir| !dir.exclude && (!exclude_non_watching || dir.watch))
         .flat_map(|dir| {
             WalkDir::new(&dir.path)
                 .into_iter()
@@ -212,6 +213,7 @@ pub fn get_file_system_files_list(settings: &Settings) -> anyhow::Result<Vec<Fil
         &settings.indexing_directories,
         file_info_from_path,
         false,
+        false,
     )
 }
 
@@ -226,9 +228,11 @@ pub fn get_file_system_partial_files_list(
             .map(|path| IndexingDirectory {
                 path: path.to_path_buf(),
                 exclude: false,
+                watch: true,
             })
             .collect::<Vec<_>>(),
         file_info_from_path,
+        true,
         true,
     )
 }

@@ -47,4 +47,5 @@ impl Default for Settings {
 pub struct IndexingDirectory {
     pub path: PathBuf,
     pub exclude: bool,
+    pub watch: bool,
 }
