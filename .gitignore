@@ -16,3 +16,6 @@ Cargo.lock
 dist/
 
 Settings.toml
+
+.cargo/config.toml
+nn_server/models/

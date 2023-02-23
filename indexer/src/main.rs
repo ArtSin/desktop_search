@@ -81,7 +81,7 @@ async fn main() {
         settings: RwLock::new(settings),
         es_client,
         reqwest_client: reqwest::Client::builder()
-            .timeout(Duration::from_secs(10))
+            .timeout(Duration::from_secs(30))
             .build()
             .unwrap_or_log(),
         indexing_status: RwLock::new(IndexingStatus::NotStarted),

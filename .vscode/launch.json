@@ -59,6 +59,43 @@
             },
             "args": [],
             "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug executable 'nn_server'",
+            "cargo": {
+                "args": [
+                    "build",
+                    "--bin=nn_server",
+                    "--package=nn_server"
+                ],
+                "filter": {
+                    "name": "nn_server",
+                    "kind": "bin"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug unit tests in executable 'nn_server'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--bin=nn_server",
+                    "--package=nn_server"
+                ],
+                "filter": {
+                    "name": "nn_server",
+                    "kind": "bin"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
         }
     ]
 }

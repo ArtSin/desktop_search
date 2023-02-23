@@ -140,6 +140,8 @@ pub fn DirectoryList<'a, G: Html>(
             .modify()
             .push(DirectoryItem::new((*curr_directory.get()).clone()));
         curr_directory.set(IndexingDirectory::default());
+        curr_directory_exclude_str.set(curr_directory.get().exclude.to_string());
+        curr_directory_watch.set(curr_directory.get().watch);
     };
 
     view! { cx,
