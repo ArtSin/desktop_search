@@ -37,6 +37,7 @@ mod parser;
 mod scanner;
 mod search;
 mod settings;
+mod thumbnails;
 mod watcher;
 
 pub struct ServerState {

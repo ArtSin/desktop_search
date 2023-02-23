@@ -15,22 +15,32 @@ pub struct TextEmbedding {
     pub embedding: Vec<f32>,
 }
 
-pub async fn get_image_search_image_embedding(
+pub async fn get_image_search_image_embedding_generic<T: Into<reqwest::Body>>(
     reqwest_client: &reqwest::Client,
     mut nnserver_url: Url,
-    image_path: impl AsRef<Path>,
+    image: T,
 ) -> anyhow::Result<ImageEmbedding> {
     nnserver_url.set_path("clip/image");
     let req_builder = reqwest_client.post(nnserver_url);
-    let response = req_builder
-        .body(File::open(image_path).await?)
-        .send()
-        .await?;
+    let response = req_builder.body(image).send().await?;
     if response.status().is_client_error() {
         return Ok(ImageEmbedding { embedding: None });
     }
     let embedding = response.json().await?;
     Ok(embedding)
+}
+
+pub async fn get_image_search_image_embedding(
+    reqwest_client: &reqwest::Client,
+    nnserver_url: Url,
+    image_path: impl AsRef<Path>,
+) -> anyhow::Result<ImageEmbedding> {
+    get_image_search_image_embedding_generic(
+        reqwest_client,
+        nnserver_url,
+        File::open(image_path).await?,
+    )
+    .await
 }
 
 pub async fn get_image_search_text_embedding(

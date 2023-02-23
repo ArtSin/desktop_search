@@ -5,7 +5,11 @@ use common_lib::elasticsearch::{FileES, ImageData, ResolutionUnit};
 use serde::Deserialize;
 use serde_with::{serde_as, DisplayFromStr};
 
-use crate::{embeddings::get_image_search_image_embedding, ServerState};
+use crate::{
+    embeddings::{get_image_search_image_embedding, get_image_search_image_embedding_generic},
+    thumbnails::get_thumbnail,
+    ServerState,
+};
 
 use super::{Metadata, Parser};
 
@@ -65,6 +69,8 @@ pub struct ImageParser;
 impl Parser for ImageParser {
     fn is_supported_file(&self, metadata: &Metadata) -> bool {
         metadata.content_type.starts_with("image")
+            || metadata.content_type.starts_with("audio")
+            || metadata.content_type.starts_with("video")
     }
 
     async fn parse(
@@ -79,9 +85,39 @@ impl Parser for ImageParser {
         );
 
         let nnserver_url = state.settings.read().await.other.nnserver_url.clone();
-        let embedding =
-            get_image_search_image_embedding(&state.reqwest_client, nnserver_url, &file.path)
-                .await?;
+        let embedding = if metadata.content_type.starts_with("image") {
+            Some(
+                get_image_search_image_embedding(&state.reqwest_client, nnserver_url, &file.path)
+                    .await?,
+            )
+        } else {
+            // Try to get thumbnail for audio/video files, ignore errors
+            match get_thumbnail(&file.path.to_string_lossy(), &None).await {
+                Ok(thumbnail) => {
+                    match get_image_search_image_embedding_generic(
+                        &state.reqwest_client,
+                        nnserver_url,
+                        thumbnail.0,
+                    )
+                    .await
+                    {
+                        Ok(res) => Some(res),
+                        Err(err) => {
+                            tracing::debug!("Error calculating embedding of thumbnail: {}", err);
+                            None
+                        }
+                    }
+                }
+                Err(err) => {
+                    tracing::debug!("Error getting thumbnail of file: {}", err);
+                    None
+                }
+            }
+        };
+        if embedding.is_none() {
+            return Ok(());
+        }
+        let embedding = embedding.unwrap();
 
         let data = std::mem::take(&mut metadata.image_data);
         file.image_data = ImageData {
