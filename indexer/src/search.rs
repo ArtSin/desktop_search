@@ -32,6 +32,10 @@ const ADJACENT_PAGES: u32 = 3;
 
 fn get_es_request_filter(search_request: &SearchRequest) -> Vec<Value> {
     [
+        search_request
+            .path_prefix
+            .as_ref()
+            .map(|x| term("path.hierarchy", x.to_string_lossy().replace('\\', "/"))),
         search_request.content_type.as_ref().map(|v| {
             let mut include_type = Vec::new();
             let mut include_subtypes = Vec::new();

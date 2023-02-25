@@ -32,6 +32,16 @@ pub async fn create_index(es_client: &Elasticsearch) -> Result<(), elasticsearch
                             "path_char_filter": {
                                 "type": "mapping",
                                 "mappings": ["_ => -", ". => -"]
+                            },
+                            "path_hierarchy_char_filter": {
+                                "type": "mapping",
+                                "mappings": ["\\\\ => /"]
+                            }
+                        },
+                        "tokenizer": {
+                            "path_hierarchy_tokenizer": {
+                                "type": "path_hierarchy",
+                                "delimiter": "/"
                             }
                         },
                         "filter": {
@@ -79,6 +89,10 @@ pub async fn create_index(es_client: &Elasticsearch) -> Result<(), elasticsearch
                                     "russian_stop"
                                 ]
                             },
+                            "path_hierarchy_analyzer": {
+                                "char_filter": "path_char_filter",
+                                "tokenizer": "path_hierarchy_tokenizer"
+                            },
                             "en_ru_analyzer_shingles": {
                                 "tokenizer": "standard",
                                 "filter": [
@@ -106,6 +120,10 @@ pub async fn create_index(es_client: &Elasticsearch) -> Result<(), elasticsearch
                         "fields": {
                             "keyword": {
                                 "type": "keyword"
+                            },
+                            "hierarchy": {
+                                "type": "text",
+                                "analyzer": "path_hierarchy_analyzer"
                             },
                             "shingles": {
                                 "type": "text",
@@ -259,6 +277,7 @@ pub async fn create_index(es_client: &Elasticsearch) -> Result<(), elasticsearch
             }
         }))
         .send()
-        .await?;
+        .await?
+        .error_for_status_code()?;
     Ok(())
 }

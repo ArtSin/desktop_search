@@ -12,6 +12,7 @@ use crate::elasticsearch::{AudioChannelType, FileES, ResolutionUnit};
 pub struct SearchRequest {
     pub page: u32,
     pub query: QueryType,
+    pub path_prefix: Option<PathBuf>,
     pub content_type: Option<Vec<ContentTypeRequestItem>>,
     pub path_enabled: bool,
     pub hash_enabled: bool,

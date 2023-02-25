@@ -24,9 +24,12 @@ use crate::{
     settings::{MAX_FILE_SIZE_MAX, MAX_FILE_SIZE_MIN},
 };
 
-use self::filter_groups::{
-    DocumentFilters, DocumentFiltersData, ImageFilters, ImageFiltersData, MultimediaFilters,
-    MultimediaFiltersData,
+use self::{
+    filter_groups::{
+        DocumentFilters, DocumentFiltersData, ImageFilters, ImageFiltersData, MultimediaFilters,
+        MultimediaFiltersData,
+    },
+    filters::PathFilter,
 };
 
 mod filter_groups;
@@ -79,6 +82,7 @@ pub fn Search<'a, G: Html>(
     let image_search_coeff = create_signal(cx, 2.0);
 
     let display_filters = create_signal(cx, true);
+    let path_prefix = create_signal(cx, None);
     let content_type_disabled = create_signal(cx, true);
     let content_type_items = content_type_filter_items(cx);
     let path_enabled = create_signal(cx, true);
@@ -156,6 +160,7 @@ pub fn Search<'a, G: Html>(
             let search_request = SearchRequest {
                 page,
                 query: search_query,
+                path_prefix: path_prefix.get().as_ref().clone(),
                 content_type: (!*content_type_disabled.get())
                     .then(|| content_type_request_items(content_type_items)),
                 path_enabled: *path_enabled.get(),
@@ -276,6 +281,9 @@ pub fn Search<'a, G: Html>(
                             }
                         }
                     })
+
+                    PathFilter(legend="Искать в папке", id="path_prefix", value=path_prefix,
+                        status_dialog_state=status_dialog_state)
 
                     ContentTypeFilter(items=content_type_items, disabled=content_type_disabled)
 

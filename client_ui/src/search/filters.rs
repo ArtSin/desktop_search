@@ -2,11 +2,16 @@ use std::{
     cmp::Eq,
     fmt::{Debug, Display},
     hash::Hash,
+    path::PathBuf,
     str::FromStr,
 };
 
 use chrono::{DateTime, Local, TimeZone, Utc};
-use sycamore::prelude::*;
+use common_lib::actions::PickFolderResult;
+use sycamore::{futures::spawn_local_scoped, prelude::*};
+use wasm_bindgen::JsValue;
+
+use crate::app::{fetch, widgets::StatusDialogState};
 
 pub mod content_type;
 
@@ -342,6 +347,61 @@ where
             div(class="filter_field") {
                 label(for=props.id) { (format!("{:.1}", props.value.get())) " " }
                 input(type="range", min=props.min, max=props.max, step=props.step, bind:value=value_str) {}
+            }
+        }
+    }
+}
+
+async fn pick_folder() -> Result<PickFolderResult, JsValue> {
+    fetch("/pick_folder", "POST", None::<&()>).await
+}
+
+#[derive(Prop)]
+pub struct PathFilterProps<'a> {
+    pub legend: &'static str,
+    pub id: &'static str,
+    pub value: &'a Signal<Option<PathBuf>>,
+    pub status_dialog_state: &'a Signal<StatusDialogState>,
+}
+
+#[component]
+pub fn PathFilter<'a, G: Html>(cx: Scope<'a>, props: PathFilterProps<'a>) -> View<G> {
+    let enabled = create_signal(cx, false);
+    let value = create_signal(cx, PathBuf::new());
+    let value_str = create_memo(cx, || value.get().to_string_lossy().into_owned());
+
+    create_effect(cx, || {
+        props
+            .value
+            .set(enabled.get().then(|| value.get().as_ref().clone()))
+    });
+
+    let select_directory = move |_| {
+        spawn_local_scoped(cx, async {
+            match pick_folder().await {
+                Ok(res) => {
+                    if let Some(path) = res.path {
+                        *value.modify() = path;
+                    }
+                }
+                Err(e) => {
+                    props
+                        .status_dialog_state
+                        .set(StatusDialogState::Error(format!(
+                            "❌ Ошибка открытия диалога: {e:#?}",
+                        )));
+                }
+            }
+        });
+    };
+
+    view! { cx,
+        fieldset {
+            legend { (props.legend) }
+            div(class="filter_field") {
+                input(type="checkbox", id=props.id, name=props.id, bind:checked=enabled)
+                input(type="text", size=7, disabled=!*enabled.get(), readonly=true, value=value_str)
+                button(type="button", on:click=select_directory) { "Выбрать" }
             }
         }
     }
