@@ -41,6 +41,8 @@ pub(super) fn SearchResults<'a, G: Html>(
                 let path__ = item.file.path.clone();
                 let content_type = item.file.content_type.clone();
 
+                let empty_file = item.file.size == 0;
+
                 let highlighted_path = "Полный путь: ".to_owned() + &item.highlights.path;
                 let highlighted_hash = item.highlights.hash.as_ref().map(|x| "Хеш SHA-256: ".to_owned() + x);
 
@@ -48,7 +50,8 @@ pub(super) fn SearchResults<'a, G: Html>(
                     preview_data.set(PreviewData {
                         display: true,
                         path: item.file.path.clone(),
-                        content_type: content_type.clone()
+                        content_type: content_type.clone(),
+                        id: item.file._id.clone().unwrap(),
                     });
                 };
                 let open_path = move |path| {
@@ -89,7 +92,8 @@ pub(super) fn SearchResults<'a, G: Html>(
                         h3(style="overflow-wrap: anywhere;") { (file_name) }
                         p(style="overflow-wrap: anywhere;", dangerously_set_inner_html=&highlighted_path)
                         div {
-                            button(form="search", type="button", on:click=show_preview) { "Показать" }
+                            button(form="search", type="button", disabled=empty_file,
+                                on:click=show_preview) { "Показать" }
                             button(form="search", type="button", on:click=open_file) { "Открыть" }
                             button(form="search", type="button", on:click=open_folder) { "Открыть папку" }
                         }

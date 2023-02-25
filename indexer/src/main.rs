@@ -110,6 +110,7 @@ async fn main() {
         .route("/pick_file", post(actions::pick_file))
         .route("/pick_folder", post(actions::pick_folder))
         .route("/file", get(file_server::get_file))
+        .route("/document_content", get(file_server::get_document_content))
         .fallback(file_server::get_client_file)
         .with_state(server_state)
         .layer(

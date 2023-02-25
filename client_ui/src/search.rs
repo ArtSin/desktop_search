@@ -4,6 +4,7 @@ use common_lib::{
     actions::PickFileResult,
     search::{ImageQuery, PageType, SearchRequest, SearchResponse, TextQuery},
 };
+use gloo_net::http::Request;
 use sycamore::{futures::spawn_local_scoped, prelude::*};
 use url::Url;
 use wasm_bindgen::JsValue;
@@ -328,7 +329,7 @@ pub fn Search<'a, G: Html>(
 
             }
 
-            Preview(preview_data=preview_data)
+            Preview(preview_data=preview_data, status_dialog_state=status_dialog_state)
         }
     }
 }
@@ -384,10 +385,15 @@ struct PreviewData {
     display: bool,
     path: PathBuf,
     content_type: String,
+    id: String,
 }
 
 #[component(inline_props)]
-fn Preview<'a, G: Html>(cx: Scope<'a>, preview_data: &'a Signal<PreviewData>) -> View<G> {
+fn Preview<'a, G: Html>(
+    cx: Scope<'a>,
+    preview_data: &'a Signal<PreviewData>,
+    status_dialog_state: &'a Signal<StatusDialogState>,
+) -> View<G> {
     let hide_preview = move |_| {
         preview_data.modify().display = false;
     };
@@ -396,6 +402,8 @@ fn Preview<'a, G: Html>(cx: Scope<'a>, preview_data: &'a Signal<PreviewData>) ->
         (if preview_data.get().display {
             let content_type = preview_data.get().content_type.clone();
             let object_url = get_local_file_url(&preview_data.get().path, Some(&content_type), false);
+            let id = preview_data.get().id.clone();
+
             view! { cx,
                 aside(id="preview") {
                     button(form="search", type="button", on:click=hide_preview) { "✖" }
@@ -429,6 +437,39 @@ fn Preview<'a, G: Html>(cx: Scope<'a>, preview_data: &'a Signal<PreviewData>) ->
                                     "Предпросмотр файла не поддерживается"
                                 }
                             }
+                        }
+                    } else if content_type != "text/html" && content_type != "application/pdf" {
+                        let id = id.clone();
+                        spawn_local_scoped(cx, async move {
+                            let content = match Request::get("/document_content")
+                                .query([("id", id)])
+                                .send()
+                                .await
+                            {
+                                Ok(response) => response.text().await,
+                                Err(e) => Err(e),
+                            };
+                            match content {
+                                Ok(content) => {
+                                    let element = web_sys::window()
+                                        .expect("`window` not found")
+                                        .document()
+                                        .expect("`document` not found")
+                                        .get_element_by_id("preview_object")
+                                        .expect("`preview_object` not found");
+                                    element.set_text_content(Some(&content));
+                                    status_dialog_state.set(StatusDialogState::None);
+                                }
+                                Err(e) => {
+                                    status_dialog_state.set(StatusDialogState::Error(format!(
+                                        "❌ Ошибка получения файла: {e:#?}",
+                                    )));
+                                }
+                            }
+                        });
+
+                        view! { cx,
+                            pre(id="preview_object", style="overflow: scroll;")
                         }
                     } else {
                         let object_url = object_url.clone();

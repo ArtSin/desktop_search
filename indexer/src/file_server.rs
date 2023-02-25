@@ -1,16 +1,20 @@
+use std::sync::Arc;
+
 use axum::{
     body::{boxed, Body, BoxBody},
-    extract::Query,
+    extract::{Query, State},
     http::{HeaderMap, Request, StatusCode, Uri},
     response::Response,
 };
+use common_lib::elasticsearch::ELASTICSEARCH_INDEX;
 use rust_embed::RustEmbed;
 use serde::Deserialize;
+use serde_json::Value;
 use tower::ServiceExt;
 use tower_http::services::ServeFile;
 use tracing_unwrap::{OptionExt, ResultExt};
 
-use crate::thumbnails::get_thumbnail;
+use crate::{thumbnails::get_thumbnail, ServerState};
 
 #[derive(RustEmbed)]
 #[folder = "$CARGO_MANIFEST_DIR/../client_ui/dist"]
@@ -21,6 +25,16 @@ pub struct FileQuery {
     path: String,
     content_type: Option<String>,
     thumbnail: bool,
+}
+
+#[derive(Deserialize)]
+pub struct DocumentQuery {
+    id: String,
+}
+
+#[derive(Deserialize)]
+pub struct DocumentContent {
+    content: String,
 }
 
 pub async fn get_client_file(uri: Uri) -> Result<Response<BoxBody>, (StatusCode, String)> {
@@ -104,4 +118,28 @@ pub async fn get_file(
             Ok(res)
         }
     }
+}
+
+pub async fn get_document_content(
+    State(state): State<Arc<ServerState>>,
+    Query(params): Query<DocumentQuery>,
+) -> Result<String, (StatusCode, String)> {
+    let es_response_body = state
+        .es_client
+        .get(elasticsearch::GetParts::IndexId(
+            ELASTICSEARCH_INDEX,
+            &params.id,
+        ))
+        ._source(&["content"])
+        .send()
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+        .json::<Value>()
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    Ok(
+        serde_json::from_value::<DocumentContent>(es_response_body["_source"].clone())
+            .map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?
+            .content,
+    )
 }
