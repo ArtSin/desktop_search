@@ -5,7 +5,7 @@ use common_lib::settings::Settings;
 use serde::{Deserialize, Serialize};
 use tracing_unwrap::ResultExt;
 
-use crate::ServerState;
+use crate::{watcher::start_watcher, ServerState};
 
 const SETTINGS_FILE_PATH: &str = "Settings.toml";
 
@@ -53,6 +53,7 @@ pub async fn put_settings(
     Json(new_settings): Json<Settings>,
 ) -> Result<(), (StatusCode, String)> {
     state.settings.write().await.other = new_settings;
+    start_watcher(Arc::clone(&state)).await;
     write_settings_file(state)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;

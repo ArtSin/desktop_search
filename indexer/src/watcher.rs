@@ -1,4 +1,4 @@
-use std::{path::PathBuf, sync::Arc, time::Duration};
+use std::{ops::DerefMut, path::PathBuf, sync::Arc, time::Duration};
 
 use common_lib::{
     elasticsearch::ELASTICSEARCH_MAX_SIZE, indexer::IndexingStatus, settings::IndexingDirectory,
@@ -11,6 +11,14 @@ use tracing_unwrap::{OptionExt, ResultExt};
 use crate::{indexer::indexing_process, scanner::process_indexable_files, ServerState};
 
 pub async fn start_watcher(state: Arc<ServerState>) {
+    let debouncer = std::mem::take(state.watcher_debouncer.write().await.deref_mut());
+    if let Some(debouncer) = debouncer {
+        tracing::info!("Stopping watcher");
+        debouncer.stop_nonblocking();
+    }
+    if !state.settings.read().await.other.watcher_enabled {
+        return;
+    }
     tracing::info!("Starting watcher");
 
     let (tx, rx) = mpsc::unbounded_channel();

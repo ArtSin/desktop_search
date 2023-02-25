@@ -1,3 +1,5 @@
+use std::ops::DerefMut;
+
 use common_lib::{actions::PickFolderResult, settings::IndexingDirectory};
 use sycamore::{futures::spawn_local_scoped, prelude::*};
 use uuid::Uuid;
@@ -136,10 +138,9 @@ pub fn DirectoryList<'a, G: Html>(
     };
 
     let add_item = |_| {
-        directory_list
-            .modify()
-            .push(DirectoryItem::new((*curr_directory.get()).clone()));
-        curr_directory.set(IndexingDirectory::default());
+        let mut curr_dir = std::mem::take(curr_directory.modify().deref_mut());
+        curr_dir.watch &= !curr_dir.exclude;
+        directory_list.modify().push(DirectoryItem::new(curr_dir));
         curr_directory_exclude_str.set(curr_directory.get().exclude.to_string());
         curr_directory_watch.set(curr_directory.get().watch);
     };
@@ -172,7 +173,7 @@ pub fn DirectoryList<'a, G: Html>(
                 option(value="true") { "Исключить" }
             }
             input(type="checkbox", id="curr_directory_watch", name="curr_directory_watch",
-                bind:checked=curr_directory_watch)
+                disabled=*curr_directory_exclude_str.get() == "true", bind:checked=curr_directory_watch)
             label(for="curr_directory_watch") { "Отслеживать" }
             button(type="button", on:click=add_item, disabled=*curr_directory_empty.get()) { "➕" }
         }

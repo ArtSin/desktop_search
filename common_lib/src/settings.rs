@@ -36,8 +36,8 @@ impl Default for Settings {
             max_file_size: 50 * 1024 * 1024, // 50 MiB
             nnserver_batch_size: 32,
             elasticsearch_batch_size: 100,
-            max_sentences: 20,
-            sentences_per_paragraph: 4,
+            max_sentences: 100,
+            sentences_per_paragraph: 1,
             knn_candidates_multiplier: 10,
         }
     }

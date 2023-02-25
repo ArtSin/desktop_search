@@ -75,7 +75,6 @@ async fn main() {
         .expect_or_log("Can't create Elasticsearch index");
 
     let open_on_start = settings.other.open_on_start;
-    let watcher_enabled = settings.other.watcher_enabled;
     let indexing_events_channel_capacity = 2 * settings.other.nnserver_batch_size;
 
     let server_state = Arc::new(ServerState {
@@ -90,9 +89,7 @@ async fn main() {
         watcher_debouncer: RwLock::new(None),
     });
 
-    if watcher_enabled {
-        start_watcher(Arc::clone(&server_state)).await;
-    }
+    start_watcher(Arc::clone(&server_state)).await;
 
     let app = Router::new()
         .route(
