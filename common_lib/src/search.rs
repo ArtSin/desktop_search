@@ -55,7 +55,7 @@ pub struct ImageQuery {
 }
 
 #[skip_serializing_none]
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct ImageSearchRequest {
     pub image_make_enabled: bool,
     pub image_model_enabled: bool,
@@ -79,7 +79,7 @@ pub struct ImageSearchRequest {
 }
 
 #[skip_serializing_none]
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct MultimediaSearchRequest {
     pub artist_enabled: bool,
     pub album_enabled: bool,
@@ -95,7 +95,7 @@ pub struct MultimediaSearchRequest {
 }
 
 #[skip_serializing_none]
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct DocumentSearchRequest {
     pub title_enabled: bool,
     pub creator_enabled: bool,

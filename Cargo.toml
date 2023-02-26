@@ -1,5 +1,5 @@
 [workspace]
-members = ["common_lib", "indexer", "client_ui", "nn_server"]
+members = ["common_lib", "indexer", "client_ui", "nn_server", "benchmarks"]
 
 [workspace.dependencies]
 anyhow = "1.0.69"

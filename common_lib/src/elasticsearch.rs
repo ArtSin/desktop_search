@@ -69,6 +69,12 @@ pub enum ResolutionUnit {
     Cm,
 }
 
+impl Default for ResolutionUnit {
+    fn default() -> Self {
+        Self::Inch
+    }
+}
+
 impl FromStr for ResolutionUnit {
     type Err = anyhow::Error;
 

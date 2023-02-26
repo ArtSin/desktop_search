@@ -27,7 +27,6 @@ use self::query::{range, simple_query_string, suggest, term, terms};
 
 mod query;
 
-const RESULTS_PER_PAGE: u32 = 20;
 const ADJACENT_PAGES: u32 = 3;
 
 fn get_es_request_filter(search_request: &SearchRequest) -> Vec<Value> {
@@ -329,6 +328,7 @@ fn get_es_request_must(search_request: &SearchRequest) -> Vec<Value> {
 async fn get_request_body(
     max_sentences: u32,
     sentences_per_paragraph: u32,
+    results_per_page: u32,
     reqwest_client: &reqwest::Client,
     nnserver_url: Url,
     knn_candidates_multiplier: u32,
@@ -363,11 +363,11 @@ async fn get_request_body(
                 .await?;
 
                 let k = min(
-                    RESULTS_PER_PAGE * text_search_pages,
+                    results_per_page * text_search_pages,
                     ELASTICSEARCH_MAX_SIZE as u32,
                 );
                 let num_candidates = min(
-                    RESULTS_PER_PAGE * text_search_pages * knn_candidates_multiplier,
+                    results_per_page * text_search_pages * knn_candidates_multiplier,
                     ELASTICSEARCH_MAX_SIZE as u32,
                 );
                 request_body_knn.push(json!({
@@ -385,11 +385,11 @@ async fn get_request_body(
                     get_image_search_text_embedding(reqwest_client, nnserver_url, query).await?;
 
                 let k = min(
-                    RESULTS_PER_PAGE * image_search_pages,
+                    results_per_page * image_search_pages,
                     ELASTICSEARCH_MAX_SIZE as u32,
                 );
                 let num_candidates = min(
-                    RESULTS_PER_PAGE * image_search_pages * knn_candidates_multiplier,
+                    results_per_page * image_search_pages * knn_candidates_multiplier,
                     ELASTICSEARCH_MAX_SIZE as u32,
                 );
                 request_body_knn.push(json!({
@@ -467,11 +467,11 @@ async fn get_request_body(
                 .ok_or_else(|| anyhow::anyhow!("Incorrect image"))?;
 
             let k = min(
-                RESULTS_PER_PAGE * image_search_pages,
+                results_per_page * image_search_pages,
                 ELASTICSEARCH_MAX_SIZE as u32,
             );
             let num_candidates = min(
-                RESULTS_PER_PAGE * image_search_pages * knn_candidates_multiplier,
+                results_per_page * image_search_pages * knn_candidates_multiplier,
                 ELASTICSEARCH_MAX_SIZE as u32,
             );
             request_body_knn.push(json!({
@@ -494,14 +494,15 @@ async fn get_request_body(
 }
 
 async fn get_es_response(
+    results_per_page: u32,
     es_client: &Elasticsearch,
     page: u32,
     es_request_body: Value,
 ) -> Result<Value, elasticsearch::Error> {
     es_client
         .search(SearchParts::Index(&[ELASTICSEARCH_INDEX]))
-        .from((page * RESULTS_PER_PAGE).into())
-        .size(RESULTS_PER_PAGE.into())
+        .from((page * results_per_page).into())
+        .size(results_per_page.into())
         .body(es_request_body)
         .send()
         .await?
@@ -614,13 +615,13 @@ fn get_results(es_response_body: &Value) -> Vec<SearchResult> {
         .collect()
 }
 
-fn get_pages(es_response_body: &Value, page: u32) -> Vec<PageType> {
+fn get_pages(results_per_page: u32, es_response_body: &Value, page: u32) -> Vec<PageType> {
     let total_pages = (es_response_body["hits"]["total"]["value"]
         .as_u64()
         .unwrap_or_log() as u32
-        + RESULTS_PER_PAGE
+        + results_per_page
         - 1)
-        / RESULTS_PER_PAGE;
+        / results_per_page;
 
     let mut pages = Vec::new();
     if page > 1 {
@@ -662,18 +663,26 @@ pub async fn search(
     State(state): State<Arc<ServerState>>,
     Json(search_request): Json<SearchRequest>,
 ) -> Result<Json<SearchResponse>, (StatusCode, String)> {
-    let (max_sentences, sentences_per_paragraph, nnserver_url, knn_candidates_multiplier) = {
+    let (
+        max_sentences,
+        sentences_per_paragraph,
+        nnserver_url,
+        results_per_page,
+        knn_candidates_multiplier,
+    ) = {
         let tmp = state.settings.read().await;
         (
             tmp.other.max_sentences,
             tmp.other.sentences_per_paragraph,
             tmp.other.nnserver_url.clone(),
+            tmp.other.results_per_page,
             tmp.other.knn_candidates_multiplier,
         )
     };
     let es_request_body = get_request_body(
         max_sentences,
         sentences_per_paragraph,
+        results_per_page,
         &state.reqwest_client,
         nnserver_url,
         knn_candidates_multiplier,
@@ -681,11 +690,16 @@ pub async fn search(
     )
     .await
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
-    let es_response_body = get_es_response(&state.es_client, search_request.page, es_request_body)
-        .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    let es_response_body = get_es_response(
+        results_per_page,
+        &state.es_client,
+        search_request.page,
+        es_request_body,
+    )
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
     let results = get_results(&es_response_body);
-    let pages = get_pages(&es_response_body, search_request.page);
+    let pages = get_pages(results_per_page, &es_response_body, search_request.page);
     let suggestion = get_suggestion(&es_response_body);
     Ok(Json(SearchResponse {
         results,

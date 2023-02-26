@@ -23,6 +23,8 @@ const MAX_SENTENCES_MIN: u32 = 1;
 const MAX_SENTENCES_MAX: u32 = 1000;
 const SENTENCES_PER_PARAGRAPH_MIN: u32 = 1;
 const SENTENCES_PER_PARAGRAPH_MAX: u32 = 100;
+const RESULTS_PER_PAGE_MIN: u32 = 1;
+const RESULTS_PER_PAGE_MAX: u32 = 100;
 const KNN_CANDIDATES_MULTIPLIER_MIN: u32 = 1;
 const KNN_CANDIDATES_MULTIPLIER_MAX: u32 = 100;
 
@@ -40,6 +42,7 @@ trait SettingsUi {
     fn get_elasticsearch_batch_size_str(&self) -> String;
     fn get_max_sentences_str(&self) -> String;
     fn get_sentences_per_paragraph_str(&self) -> String;
+    fn get_results_per_page_str(&self) -> String;
     fn get_knn_candidates_multiplier_str(&self) -> String;
 
     fn valid_elasticsearch_url(elasticsearch_url_str: &str) -> bool;
@@ -51,6 +54,7 @@ trait SettingsUi {
     fn valid_elasticsearch_batch_size(elasticsearch_batch_size_str: &str) -> bool;
     fn valid_max_sentences(max_sentences_str: &str) -> bool;
     fn valid_sentences_per_paragraph(sentences_per_paragraph_str: &str) -> bool;
+    fn valid_results_per_page(results_per_page_str: &str) -> bool;
     fn valid_knn_candidates_multiplier(knn_candidates_multiplier_str: &str) -> bool;
 
     #[allow(clippy::too_many_arguments)]
@@ -68,6 +72,7 @@ trait SettingsUi {
         elasticsearch_batch_size_str: &str,
         max_sentences_str: &str,
         sentences_per_paragraph_str: &str,
+        results_per_page_str: &str,
         knn_candidates_multiplier_str: &str,
     ) -> Self;
 }
@@ -114,6 +119,9 @@ impl SettingsUi for Settings {
     }
     fn get_sentences_per_paragraph_str(&self) -> String {
         self.sentences_per_paragraph.to_string()
+    }
+    fn get_results_per_page_str(&self) -> String {
+        self.results_per_page.to_string()
     }
     fn get_knn_candidates_multiplier_str(&self) -> String {
         self.knn_candidates_multiplier.to_string()
@@ -163,6 +171,12 @@ impl SettingsUi for Settings {
             .map(|x: u32| (SENTENCES_PER_PARAGRAPH_MIN..=SENTENCES_PER_PARAGRAPH_MAX).contains(&x))
             == Ok(true)
     }
+    fn valid_results_per_page(results_per_page_str: &str) -> bool {
+        results_per_page_str
+            .parse()
+            .map(|x: u32| (RESULTS_PER_PAGE_MIN..=RESULTS_PER_PAGE_MAX).contains(&x))
+            == Ok(true)
+    }
     fn valid_knn_candidates_multiplier(knn_candidates_multiplier_str: &str) -> bool {
         knn_candidates_multiplier_str.parse().map(|x: u32| {
             (KNN_CANDIDATES_MULTIPLIER_MIN..=KNN_CANDIDATES_MULTIPLIER_MAX).contains(&x)
@@ -183,6 +197,7 @@ impl SettingsUi for Settings {
         elasticsearch_batch_size_str: &str,
         max_sentences_str: &str,
         sentences_per_paragraph_str: &str,
+        results_per_page_str: &str,
         knn_candidates_multiplier_str: &str,
     ) -> Self {
         Self {
@@ -202,6 +217,7 @@ impl SettingsUi for Settings {
             elasticsearch_batch_size: elasticsearch_batch_size_str.parse().unwrap(),
             max_sentences: max_sentences_str.parse().unwrap(),
             sentences_per_paragraph: sentences_per_paragraph_str.parse().unwrap(),
+            results_per_page: results_per_page_str.parse().unwrap(),
             knn_candidates_multiplier: knn_candidates_multiplier_str.parse().unwrap(),
         }
     }
@@ -238,6 +254,7 @@ pub fn Settings<'a, G: Html>(
     let max_sentences_str = create_signal(cx, settings.get().get_max_sentences_str());
     let sentences_per_paragraph_str =
         create_signal(cx, settings.get().get_sentences_per_paragraph_str());
+    let results_per_page_str = create_signal(cx, settings.get().get_results_per_page_str());
     let knn_candidates_multiplier_str =
         create_signal(cx, settings.get().get_knn_candidates_multiplier_str());
 
@@ -266,6 +283,9 @@ pub fn Settings<'a, G: Html>(
     let sentences_per_paragraph_valid = create_memo(cx, || {
         Settings::valid_sentences_per_paragraph(&sentences_per_paragraph_str.get())
     });
+    let results_per_page_valid = create_memo(cx, || {
+        Settings::valid_results_per_page(&results_per_page_str.get())
+    });
     let knn_candidates_multiplier_valid = create_memo(cx, || {
         Settings::valid_knn_candidates_multiplier(&knn_candidates_multiplier_str.get())
     });
@@ -279,6 +299,7 @@ pub fn Settings<'a, G: Html>(
             || !*elasticsearch_batch_size_valid.get()
             || !*max_sentences_valid.get()
             || !*sentences_per_paragraph_valid.get()
+            || !*results_per_page_valid.get()
             || !*knn_candidates_multiplier_valid.get()
     });
 
@@ -295,6 +316,7 @@ pub fn Settings<'a, G: Html>(
         elasticsearch_batch_size_str.set(settings.get().get_elasticsearch_batch_size_str());
         max_sentences_str.set(settings.get().get_max_sentences_str());
         sentences_per_paragraph_str.set(settings.get().get_sentences_per_paragraph_str());
+        results_per_page_str.set(settings.get().get_results_per_page_str());
         knn_candidates_multiplier_str.set(settings.get().get_knn_candidates_multiplier_str());
     });
     let reset_settings = |_| {
@@ -337,6 +359,7 @@ pub fn Settings<'a, G: Html>(
                 &elasticsearch_batch_size_str.get(),
                 &max_sentences_str.get(),
                 &sentences_per_paragraph_str.get(),
+                &results_per_page_str.get(),
                 &knn_candidates_multiplier_str.get(),
             );
 
@@ -396,6 +419,8 @@ pub fn Settings<'a, G: Html>(
 
                     fieldset {
                         legend { "Настройки поиска" }
+                        NumberSetting(id="results_per_page", label="Количество результатов на странице: ",
+                            value=results_per_page_str, valid=results_per_page_valid)
                         NumberSetting(id="knn_candidates_multiplier", label="Множитель количества кандидатов kNN при семантическом поиске: ",
                             value=knn_candidates_multiplier_str, valid=knn_candidates_multiplier_valid)
                     }

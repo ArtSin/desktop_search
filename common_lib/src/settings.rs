@@ -18,6 +18,7 @@ pub struct Settings {
     pub elasticsearch_batch_size: usize,
     pub max_sentences: u32,
     pub sentences_per_paragraph: u32,
+    pub results_per_page: u32,
     pub knn_candidates_multiplier: u32,
     pub indexing_directories: Vec<IndexingDirectory>,
 }
@@ -38,6 +39,7 @@ impl Default for Settings {
             elasticsearch_batch_size: 100,
             max_sentences: 100,
             sentences_per_paragraph: 1,
+            results_per_page: 20,
             knn_candidates_multiplier: 10,
         }
     }
