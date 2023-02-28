@@ -1,23 +1,28 @@
-use std::time::Instant;
+use std::time::Duration;
 
-use axum::{http::StatusCode, Json};
+use axum::{extract::Query, http::StatusCode, Json};
+use common_lib::BatchRequest;
 use once_cell::sync::OnceCell;
 use onnxruntime::{environment::Environment, session::Session, GraphOptimizationLevel};
 use serde::Deserialize;
 use tokenizers::{PaddingParams, Tokenizer, TruncationParams};
+use tokio::sync::mpsc;
 use tracing_unwrap::{OptionExt, ResultExt};
 
 use crate::{
+    batch_processing::{batch_process, log_processing_function, start_batch_process, Command},
     text_processing::{mean_pooling, preprocess_texts, PreprocessedText},
     Embedding, PATH_PREFIX,
 };
 
 const BATCH_SIZE: usize = 32;
-const MAX_DELAY: u128 = 100;
+const MAX_DELAY: Duration = Duration::from_millis(100);
+const MAX_CAPACITY: usize = 2 * BATCH_SIZE;
 
 static MAIN_MODEL: OnceCell<Session> = OnceCell::new();
 static DENSE_MODEL: OnceCell<Session> = OnceCell::new();
 static TOKENIZER: OnceCell<Tokenizer> = OnceCell::new();
+static BATCH_SENDER: OnceCell<mpsc::Sender<Command<String, Embedding>>> = OnceCell::new();
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct CLIPTextRequest {
@@ -62,11 +67,18 @@ pub fn initialize_model(environment: &Environment) -> anyhow::Result<()> {
             .map_err(|err| anyhow::anyhow!(err))?,
         )
         .unwrap_or_log();
+    BATCH_SENDER
+        .set(start_batch_process(
+            BATCH_SIZE,
+            MAX_DELAY,
+            MAX_CAPACITY,
+            |batch| log_processing_function("CLIP/Text", compute_embeddings, batch),
+        ))
+        .unwrap_or_log();
     Ok(())
 }
 
 fn compute_embeddings(texts: Vec<String>) -> anyhow::Result<Vec<Embedding>> {
-    let start_time = Instant::now();
     let session_main = MAIN_MODEL.get().unwrap_or_log();
     let session_dense = DENSE_MODEL.get().unwrap_or_log();
     let tokenizer = TOKENIZER.get().unwrap_or_log();
@@ -87,33 +99,19 @@ fn compute_embeddings(texts: Vec<String>) -> anyhow::Result<Vec<Embedding>> {
         .outer_iter()
         .map(|x| Embedding::from_unnormalized_array(x.into_owned()))
         .collect();
-
-    let indexing_duration = Instant::now() - start_time;
-    tracing::info!(
-        "Processed {} requests in {:#?}",
-        res.len(),
-        indexing_duration
-    );
     Ok(res)
 }
 
 pub async fn process_request(
+    Query(batch_query): Query<BatchRequest>,
     Json(request): Json<CLIPTextRequest>,
 ) -> Result<Json<Embedding>, (StatusCode, String)> {
-    let batch_compute = batched_fn::batched_fn! {
-        handler = |batch: Vec<String>| -> Vec<Embedding> {
-            compute_embeddings(batch).expect_or_log("Can't compute embedding")
-        };
-        config = {
-            max_batch_size: BATCH_SIZE,
-            max_delay: MAX_DELAY,
-        };
-        context = {};
-    };
-    batch_compute(request.text).await.map(Json).map_err(|err| {
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            format!("Batch processing error: {err:#?}"),
+    Ok(Json(
+        batch_process(
+            BATCH_SENDER.get().unwrap_or_log(),
+            request.text,
+            !batch_query.batched,
         )
-    })
+        .await,
+    ))
 }

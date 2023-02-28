@@ -1,19 +1,26 @@
-use std::time::Instant;
+use std::time::Duration;
 
-use axum::{body::Bytes, http::StatusCode, Json};
+use axum::{body::Bytes, extract::Query, http::StatusCode, Json};
+use common_lib::BatchRequest;
 use image::{imageops::FilterType, DynamicImage};
 use ndarray::{arr3, Array3, Axis};
 use nshare::ToNdarray3;
 use once_cell::sync::OnceCell;
 use onnxruntime::{environment::Environment, session::Session, GraphOptimizationLevel};
+use tokio::sync::mpsc;
 use tracing_unwrap::{OptionExt, ResultExt};
 
-use crate::{Embedding, PATH_PREFIX};
+use crate::{
+    batch_processing::{batch_process, log_processing_function, start_batch_process, Command},
+    Embedding, PATH_PREFIX,
+};
 
 const BATCH_SIZE: usize = 32;
-const MAX_DELAY: u128 = 200;
+const MAX_DELAY: Duration = Duration::from_millis(200);
+const MAX_CAPACITY: usize = 2 * BATCH_SIZE;
 
 static MODEL: OnceCell<Session> = OnceCell::new();
+static BATCH_SENDER: OnceCell<mpsc::Sender<Command<Array3<f32>, Embedding>>> = OnceCell::new();
 
 pub fn initialize_model(environment: &Environment) -> onnxruntime::Result<()> {
     MODEL
@@ -25,6 +32,14 @@ pub fn initialize_model(environment: &Environment) -> onnxruntime::Result<()> {
                 .with_intra_op_num_threads(1)?
                 .with_model_from_file(PATH_PREFIX.to_owned() + "models/clip-ViT-B-32/model.onnx")?,
         )
+        .unwrap_or_log();
+    BATCH_SENDER
+        .set(start_batch_process(
+            BATCH_SIZE,
+            MAX_DELAY,
+            MAX_CAPACITY,
+            |batch| log_processing_function("CLIP/Image", compute_embeddings, batch),
+        ))
         .unwrap_or_log();
     Ok(())
 }
@@ -63,8 +78,7 @@ fn preprocess_image(mut image: DynamicImage) -> Array3<f32> {
     }
 }
 
-fn compute_embeddings(arrays: Vec<Array3<f32>>) -> onnxruntime::Result<Vec<Embedding>> {
-    let start_time = Instant::now();
+fn compute_embeddings(arrays: Vec<Array3<f32>>) -> anyhow::Result<Vec<Embedding>> {
     let session = MODEL.get().unwrap_or_log();
 
     let pixel_values = ndarray::stack(
@@ -81,17 +95,13 @@ fn compute_embeddings(arrays: Vec<Array3<f32>>) -> onnxruntime::Result<Vec<Embed
         .outer_iter()
         .map(|x| Embedding::from_unnormalized_array(x.into_owned()))
         .collect();
-
-    let indexing_duration = Instant::now() - start_time;
-    tracing::info!(
-        "Processed {} requests in {:#?}",
-        res.len(),
-        indexing_duration
-    );
     Ok(res)
 }
 
-pub async fn process_request(body: Bytes) -> Result<Json<Embedding>, (StatusCode, String)> {
+pub async fn process_request(
+    Query(batch_query): Query<BatchRequest>,
+    body: Bytes,
+) -> Result<Json<Embedding>, (StatusCode, String)> {
     let array = tokio::task::spawn_blocking(move || {
         let image = image::load_from_memory(&body)
             .map_err(|err| (StatusCode::BAD_REQUEST, format!("Can't read image: {err}")))?;
@@ -100,20 +110,12 @@ pub async fn process_request(body: Bytes) -> Result<Json<Embedding>, (StatusCode
     .await
     .unwrap_or_log()?;
 
-    let batch_compute = batched_fn::batched_fn! {
-        handler = |batch: Vec<Array3<f32>>| -> Vec<Embedding> {
-            compute_embeddings(batch).expect_or_log("Can't compute embedding")
-        };
-        config = {
-            max_batch_size: BATCH_SIZE,
-            max_delay: MAX_DELAY,
-        };
-        context = {};
-    };
-    batch_compute(array).await.map(Json).map_err(|err| {
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            format!("Batch processing error: {err:#?}"),
+    Ok(Json(
+        batch_process(
+            BATCH_SENDER.get().unwrap_or_log(),
+            array,
+            !batch_query.batched,
         )
-    })
+        .await,
+    ))
 }

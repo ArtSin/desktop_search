@@ -8,6 +8,7 @@ use common_lib::{
         ImageHighlightedFields, ImageQuery, MultimediaHighlightedFields, PageType, QueryType,
         SearchRequest, SearchResponse, SearchResult, TextQuery,
     },
+    BatchRequest,
 };
 use elasticsearch::{Elasticsearch, SearchParts};
 use serde_json::{json, Value};
@@ -358,6 +359,7 @@ async fn get_request_body(
                     sentences_per_paragraph,
                     reqwest_client,
                     nnserver_url.clone(),
+                    BatchRequest { batched: false },
                     query,
                 )
                 .await?;
@@ -381,8 +383,13 @@ async fn get_request_body(
             }
 
             if image_search_enabled && !query.is_empty() {
-                let image_search_text_embedding =
-                    get_image_search_text_embedding(reqwest_client, nnserver_url, query).await?;
+                let image_search_text_embedding = get_image_search_text_embedding(
+                    reqwest_client,
+                    nnserver_url,
+                    BatchRequest { batched: false },
+                    query,
+                )
+                .await?;
 
                 let k = min(
                     results_per_page * image_search_pages,
@@ -460,8 +467,13 @@ async fn get_request_body(
             ref image_path,
             image_search_pages,
         }) => {
-            let image_search_image_embedding =
-                get_image_search_image_embedding(reqwest_client, nnserver_url, image_path).await?;
+            let image_search_image_embedding = get_image_search_image_embedding(
+                reqwest_client,
+                nnserver_url,
+                BatchRequest { batched: false },
+                image_path,
+            )
+            .await?;
             let embedding = image_search_image_embedding
                 .embedding
                 .ok_or_else(|| anyhow::anyhow!("Incorrect image"))?;

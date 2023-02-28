@@ -1,7 +1,10 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use common_lib::elasticsearch::{FileES, ImageData, ResolutionUnit};
+use common_lib::{
+    elasticsearch::{FileES, ImageData, ResolutionUnit},
+    BatchRequest,
+};
 use serde::Deserialize;
 use serde_with::{serde_as, DisplayFromStr};
 
@@ -87,8 +90,13 @@ impl Parser for ImageParser {
         let nnserver_url = state.settings.read().await.other.nnserver_url.clone();
         let embedding = if metadata.content_type.starts_with("image") {
             Some(
-                get_image_search_image_embedding(&state.reqwest_client, nnserver_url, &file.path)
-                    .await?,
+                get_image_search_image_embedding(
+                    &state.reqwest_client,
+                    nnserver_url,
+                    BatchRequest { batched: true },
+                    &file.path,
+                )
+                .await?,
             )
         } else {
             // Try to get thumbnail for audio/video files, ignore errors
@@ -97,6 +105,7 @@ impl Parser for ImageParser {
                     match get_image_search_image_embedding_generic(
                         &state.reqwest_client,
                         nnserver_url,
+                        BatchRequest { batched: true },
                         thumbnail.0,
                     )
                     .await

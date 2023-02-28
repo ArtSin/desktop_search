@@ -16,6 +16,7 @@ use tracing_subscriber::{
 };
 use tracing_unwrap::ResultExt;
 
+mod batch_processing;
 mod clip_image;
 mod clip_text;
 mod minilm_text;

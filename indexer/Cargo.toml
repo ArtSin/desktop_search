@@ -31,7 +31,7 @@ tower.workspace = true
 tower-http.workspace = true
 walkdir = "2.3.2"
 open = "3.2.0"
-rfd = { version = "0.11.0", default-features = false, features = [
+rfd = { version = "0.11.1", default-features = false, features = [
     "xdg-portal",
 ] }
 regex = "1.7.1"

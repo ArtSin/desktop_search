@@ -1,7 +1,10 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use common_lib::elasticsearch::{FileES, TextData};
+use common_lib::{
+    elasticsearch::{FileES, TextData},
+    BatchRequest,
+};
 use tracing_unwrap::OptionExt;
 
 use crate::{embeddings::get_text_search_embedding, ServerState};
@@ -42,6 +45,7 @@ impl Parser for TextParser {
             sentences_per_paragraph,
             &state.reqwest_client,
             nnserver_url,
+            BatchRequest { batched: true },
             file.content.as_ref().unwrap_or_log(),
         )
         .await?;

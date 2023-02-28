@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+common_lib = { path = "../common_lib" }
 anyhow.workspace = true
 serde.workspace = true
 serde_json.workspace = true
@@ -23,4 +24,3 @@ nshare = { version = "0.9.0", features = ["image", "ndarray"] }
 tokenizers = "0.13.2"
 srx = { version = "0.1.3", features = ["from_xml"] }
 onnxruntime = { git = "https://github.com/ArtSin/onnxruntime/" }
-batched-fn = "0.2.4"
