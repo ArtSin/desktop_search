@@ -1,4 +1,4 @@
-use common_lib::indexer::{IndexStats, IndexingStatus, IndexingWSMessage};
+use common_lib::indexer::{IndexStats, IndexingStatus, IndexingWSMessage, MAX_ERROR_CNT};
 use futures::StreamExt;
 use gloo_net::websocket::{futures::WebSocket, Message};
 use sycamore::{futures::spawn_local_scoped, prelude::*};
@@ -119,11 +119,7 @@ pub fn Status<'a, G: Html>(
                             view! { cx, }
                         })
                         (match (*indexing_status.get()).clone() {
-                            IndexingStatus::Indexing(mut data) | IndexingStatus::Finished(mut data) => {
-                                const MAX_ERROR_CNT: usize = 20;
-
-                                let errors_cnt = data.errors.len();
-                                data.errors.truncate(MAX_ERROR_CNT);
+                            IndexingStatus::Indexing(data) | IndexingStatus::Finished(data) => {
                                 let errors = create_signal(cx, data.errors);
                                 view! { cx,
                                     p {
@@ -151,10 +147,10 @@ pub fn Status<'a, G: Html>(
                                             }
                                         }
                                     )
-                                    (if errors_cnt > MAX_ERROR_CNT {
+                                    (if data.errors_cnt > MAX_ERROR_CNT {
                                         view! { cx,
                                             p {
-                                                "(ещё " (errors_cnt - MAX_ERROR_CNT) " ошибок)"
+                                                "(ещё " (data.errors_cnt - MAX_ERROR_CNT) " ошибок)"
                                             }
                                         }
                                     } else {

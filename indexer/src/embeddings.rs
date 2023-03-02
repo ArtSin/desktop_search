@@ -3,7 +3,6 @@ use std::path::Path;
 use common_lib::BatchRequest;
 use serde::Deserialize;
 use serde_json::json;
-use tokio::fs::File;
 use url::Url;
 
 #[derive(Deserialize)]
@@ -17,7 +16,7 @@ pub struct TextEmbedding {
 }
 
 pub async fn get_image_search_image_embedding_generic<T: Into<reqwest::Body>>(
-    reqwest_client: &reqwest::Client,
+    reqwest_client: &reqwest_middleware::ClientWithMiddleware,
     mut nnserver_url: Url,
     batch_request: BatchRequest,
     image: T,
@@ -33,22 +32,18 @@ pub async fn get_image_search_image_embedding_generic<T: Into<reqwest::Body>>(
 }
 
 pub async fn get_image_search_image_embedding(
-    reqwest_client: &reqwest::Client,
+    reqwest_client: &reqwest_middleware::ClientWithMiddleware,
     nnserver_url: Url,
     batch_request: BatchRequest,
     image_path: impl AsRef<Path>,
 ) -> anyhow::Result<ImageEmbedding> {
-    get_image_search_image_embedding_generic(
-        reqwest_client,
-        nnserver_url,
-        batch_request,
-        File::open(image_path).await?,
-    )
-    .await
+    let file = tokio::fs::read(image_path).await?;
+    get_image_search_image_embedding_generic(reqwest_client, nnserver_url, batch_request, file)
+        .await
 }
 
 pub async fn get_image_search_text_embedding(
-    reqwest_client: &reqwest::Client,
+    reqwest_client: &reqwest_middleware::ClientWithMiddleware,
     mut nnserver_url: Url,
     batch_request: BatchRequest,
     text: &str,
@@ -67,7 +62,7 @@ pub async fn get_image_search_text_embedding(
 pub async fn get_text_search_embedding(
     max_sentences: u32,
     sentences_per_paragraph: u32,
-    reqwest_client: &reqwest::Client,
+    reqwest_client: &reqwest_middleware::ClientWithMiddleware,
     mut nnserver_url: Url,
     batch_request: BatchRequest,
     text: &str,

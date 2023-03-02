@@ -12,7 +12,7 @@ use elasticsearch::{
 };
 use serde_json::{json, Value};
 use tokio::sync::{
-    mpsc::{self, UnboundedReceiver, UnboundedSender},
+    mpsc::{self, Receiver, Sender},
     Semaphore,
 };
 use tracing_unwrap::{OptionExt, ResultExt};
@@ -28,6 +28,8 @@ use crate::{
 
 pub mod create_index;
 pub mod status;
+
+const CHANNEL_CAPACITY_MULTIPLIER: usize = 2;
 
 /// Update indexing status and send event to channel
 async fn on_event(state: Arc<ServerState>, event: IndexingEvent) {
@@ -54,7 +56,7 @@ async fn on_event(state: Arc<ServerState>, event: IndexingEvent) {
 /// Processing is parallel with no more than given number of tasks at once
 async fn streaming_process<T, F, Fut>(
     state: Arc<ServerState>,
-    tx: UnboundedSender<(Value, Value)>,
+    tx: Sender<(Value, Value)>,
     files: Vec<T>,
     process: F,
 ) where
@@ -63,7 +65,7 @@ async fn streaming_process<T, F, Fut>(
     Fut: Future<Output = anyhow::Result<(Value, Value)>> + Send,
 {
     let semaphore = Arc::new(Semaphore::new(
-        state.settings.read().await.other.nnserver_batch_size,
+        state.settings.read().await.other.max_concurrent_files,
     ));
     let mut futures = Vec::new();
     for file in files {
@@ -72,7 +74,7 @@ async fn streaming_process<T, F, Fut>(
         let tx = tx.clone();
         futures.push(tokio::spawn(async move {
             let res = process(Arc::clone(&state), file).await;
-            tx.send(res?).unwrap_or_log();
+            tx.send(res?).await.unwrap_or_log();
             on_event(state, IndexingEvent::FileProcessed).await;
             drop(permit);
             Ok::<(), anyhow::Error>(())
@@ -134,7 +136,7 @@ async fn remove_old(_state: Arc<ServerState>, file: FileInfo) -> anyhow::Result<
 /// Accept operations from channel and bulk send them to Elasticsearch
 async fn bulk_send(
     state: Arc<ServerState>,
-    mut rx: UnboundedReceiver<(Value, Value)>,
+    mut rx: Receiver<(Value, Value)>,
 ) -> Result<(), elasticsearch::Error> {
     async fn send_queue(
         es_client: &Elasticsearch,
@@ -226,8 +228,10 @@ pub async fn indexing_process(state: Arc<ServerState>, paths: Option<Vec<PathBuf
     .await;
 
     // Create channel to bulk send operations to Elasticsearch
+    let channel_capacity =
+        CHANNEL_CAPACITY_MULTIPLIER * state.settings.read().await.other.elasticsearch_batch_size;
+    let (tx, rx) = mpsc::channel(channel_capacity);
     let tmp = Arc::clone(&state);
-    let (tx, rx) = mpsc::unbounded_channel();
     let bulk_send_f = tokio::spawn(async move { bulk_send(tmp, rx).await });
 
     // Process differences and send operations to channel

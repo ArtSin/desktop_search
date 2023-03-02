@@ -5,7 +5,6 @@ use chrono::{DateTime, Local, TimeZone, Utc};
 use common_lib::elasticsearch::FileES;
 use mime::Mime;
 use serde::{de::Error, Deserialize, Deserializer};
-use tokio::fs::File;
 
 use crate::ServerState;
 
@@ -71,10 +70,11 @@ async fn get_metadata(state: Arc<ServerState>, file: &mut FileES) -> anyhow::Res
     let mut tika_meta_url = state.settings.read().await.other.tika_url.clone();
     tika_meta_url.set_path("rmeta/text");
     let req_builder = state.reqwest_client.put(tika_meta_url);
+    let file = tokio::fs::read(&file.path).await?;
     let [metadata]: [Metadata; 1] = req_builder
         .header("Accept", "application/json")
         .header("maxEmbeddedResources", "0")
-        .body(File::open(&file.path).await?)
+        .body(file)
         .send()
         .await?
         .json()

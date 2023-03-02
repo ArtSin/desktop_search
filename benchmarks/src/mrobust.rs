@@ -1,12 +1,11 @@
-use std::{
-    path::PathBuf,
-    time::{Duration, Instant},
-};
+use std::{path::PathBuf, time::Instant};
 
 use common_lib::search::{QueryType, SearchRequest, SearchResponse, TextQuery};
 use reqwest::Url;
 use serde::{Deserialize, Serialize};
 use tracing_unwrap::{OptionExt, ResultExt};
+
+use crate::get_reqwest_client;
 
 const MAX_RANK: usize = 100;
 
@@ -60,7 +59,7 @@ pub async fn create_files(collection_path: PathBuf, output_dir: PathBuf) {
 }
 
 async fn process_query(
-    reqwest_client: &reqwest::Client,
+    reqwest_client: &reqwest_middleware::ClientWithMiddleware,
     search_url: Url,
     content_enabled: bool,
     text_search_enabled: bool,
@@ -160,10 +159,7 @@ pub async fn benchmark(
         .expect_or_log("Error writing file");
 
     // Create reqwest client for HTTP requests
-    let reqwest_client = reqwest::Client::builder()
-        .timeout(Duration::from_secs(30))
-        .build()
-        .unwrap_or_log();
+    let reqwest_client = get_reqwest_client();
     let mut search_url = indexer_address.clone();
     search_url.set_path("/search");
 

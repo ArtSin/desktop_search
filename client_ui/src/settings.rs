@@ -15,8 +15,8 @@ const DEBOUNCER_TIMEOUT_MIN: f32 = 0.1;
 const DEBOUNCER_TIMEOUT_MAX: f32 = 3600.0;
 pub const MAX_FILE_SIZE_MIN: f64 = 0.01;
 pub const MAX_FILE_SIZE_MAX: f64 = 1000.0;
-const NNSERVER_BATCH_SIZE_MIN: usize = 1;
-const NNSERVER_BATCH_SIZE_MAX: usize = 256;
+const MAX_CONCURRENT_FILES_MIN: usize = 1;
+const MAX_CONCURRENT_FILES_MAX: usize = 256;
 const ELASTICSEARCH_BATCH_SIZE_MIN: usize = 1;
 const ELASTICSEARCH_BATCH_SIZE_MAX: usize = 1000;
 const MAX_SENTENCES_MIN: u32 = 1;
@@ -38,8 +38,10 @@ trait SettingsUi {
     fn get_watcher_enabled(&self) -> bool;
     fn get_debouncer_timeout_str(&self) -> String;
     fn get_max_file_size_str(&self) -> String;
-    fn get_nnserver_batch_size_str(&self) -> String;
+    fn get_max_concurrent_files_str(&self) -> String;
     fn get_elasticsearch_batch_size_str(&self) -> String;
+    fn get_text_search_enabled(&self) -> bool;
+    fn get_image_search_enabled(&self) -> bool;
     fn get_max_sentences_str(&self) -> String;
     fn get_sentences_per_paragraph_str(&self) -> String;
     fn get_results_per_page_str(&self) -> String;
@@ -50,7 +52,7 @@ trait SettingsUi {
     fn valid_nnserver_url(nnserver_url_str: &str) -> bool;
     fn valid_debouncer_timeout(debouncer_timeout_str: &str) -> bool;
     fn valid_max_file_size(max_file_size_str: &str) -> bool;
-    fn valid_nnserver_batch_size(nnserver_batch_size_str: &str) -> bool;
+    fn valid_max_concurrent_files(max_concurrent_files_str: &str) -> bool;
     fn valid_elasticsearch_batch_size(elasticsearch_batch_size_str: &str) -> bool;
     fn valid_max_sentences(max_sentences_str: &str) -> bool;
     fn valid_sentences_per_paragraph(sentences_per_paragraph_str: &str) -> bool;
@@ -68,8 +70,10 @@ trait SettingsUi {
         watcher_enabled: bool,
         debouncer_timeout_str: &str,
         max_file_size_str: &str,
-        nnserver_batch_size_str: &str,
+        max_concurrent_files_str: &str,
         elasticsearch_batch_size_str: &str,
+        text_search_enabled: bool,
+        image_search_enabled: bool,
         max_sentences_str: &str,
         sentences_per_paragraph_str: &str,
         results_per_page_str: &str,
@@ -108,11 +112,17 @@ impl SettingsUi for Settings {
     fn get_max_file_size_str(&self) -> String {
         ((self.max_file_size as f64) / 1024.0 / 1024.0).to_string()
     }
-    fn get_nnserver_batch_size_str(&self) -> String {
-        self.nnserver_batch_size.to_string()
+    fn get_max_concurrent_files_str(&self) -> String {
+        self.max_concurrent_files.to_string()
     }
     fn get_elasticsearch_batch_size_str(&self) -> String {
         self.elasticsearch_batch_size.to_string()
+    }
+    fn get_text_search_enabled(&self) -> bool {
+        self.text_search_enabled
+    }
+    fn get_image_search_enabled(&self) -> bool {
+        self.image_search_enabled
     }
     fn get_max_sentences_str(&self) -> String {
         self.max_sentences.to_string()
@@ -148,10 +158,10 @@ impl SettingsUi for Settings {
             .map(|x: f64| (MAX_FILE_SIZE_MIN..=MAX_FILE_SIZE_MAX).contains(&x))
             == Ok(true)
     }
-    fn valid_nnserver_batch_size(nnserver_batch_size_str: &str) -> bool {
-        nnserver_batch_size_str
+    fn valid_max_concurrent_files(max_concurrent_files_str: &str) -> bool {
+        max_concurrent_files_str
             .parse()
-            .map(|x: usize| (NNSERVER_BATCH_SIZE_MIN..=NNSERVER_BATCH_SIZE_MAX).contains(&x))
+            .map(|x: usize| (MAX_CONCURRENT_FILES_MIN..=MAX_CONCURRENT_FILES_MAX).contains(&x))
             == Ok(true)
     }
     fn valid_elasticsearch_batch_size(elasticsearch_batch_size_str: &str) -> bool {
@@ -193,8 +203,10 @@ impl SettingsUi for Settings {
         watcher_enabled: bool,
         debouncer_timeout_str: &str,
         max_file_size_str: &str,
-        nnserver_batch_size_str: &str,
+        max_concurrent_files_str: &str,
         elasticsearch_batch_size_str: &str,
+        text_search_enabled: bool,
+        image_search_enabled: bool,
         max_sentences_str: &str,
         sentences_per_paragraph_str: &str,
         results_per_page_str: &str,
@@ -213,8 +225,10 @@ impl SettingsUi for Settings {
             watcher_enabled,
             debouncer_timeout: debouncer_timeout_str.parse().unwrap(),
             max_file_size: (max_file_size_str.parse::<f64>().unwrap() * 1024.0 * 1024.0) as u64,
-            nnserver_batch_size: nnserver_batch_size_str.parse().unwrap(),
+            max_concurrent_files: max_concurrent_files_str.parse().unwrap(),
             elasticsearch_batch_size: elasticsearch_batch_size_str.parse().unwrap(),
+            text_search_enabled,
+            image_search_enabled,
             max_sentences: max_sentences_str.parse().unwrap(),
             sentences_per_paragraph: sentences_per_paragraph_str.parse().unwrap(),
             results_per_page: results_per_page_str.parse().unwrap(),
@@ -248,9 +262,11 @@ pub fn Settings<'a, G: Html>(
     let watcher_enabled = create_signal(cx, settings.get().get_watcher_enabled());
     let debouncer_timeout_str = create_signal(cx, settings.get().get_debouncer_timeout_str());
     let max_file_size_str = create_signal(cx, settings.get().get_max_file_size_str());
-    let nnserver_batch_size_str = create_signal(cx, settings.get().get_nnserver_batch_size_str());
+    let max_concurrent_files_str = create_signal(cx, settings.get().get_max_concurrent_files_str());
     let elasticsearch_batch_size_str =
         create_signal(cx, settings.get().get_elasticsearch_batch_size_str());
+    let text_search_enabled = create_signal(cx, settings.get().get_text_search_enabled());
+    let image_search_enabled = create_signal(cx, settings.get().get_image_search_enabled());
     let max_sentences_str = create_signal(cx, settings.get().get_max_sentences_str());
     let sentences_per_paragraph_str =
         create_signal(cx, settings.get().get_sentences_per_paragraph_str());
@@ -271,8 +287,8 @@ pub fn Settings<'a, G: Html>(
     let max_file_size_valid = create_memo(cx, || {
         Settings::valid_max_file_size(&max_file_size_str.get())
     });
-    let nnserver_batch_size_valid = create_memo(cx, || {
-        Settings::valid_nnserver_batch_size(&nnserver_batch_size_str.get())
+    let max_concurrent_files_valid = create_memo(cx, || {
+        Settings::valid_max_concurrent_files(&max_concurrent_files_str.get())
     });
     let elasticsearch_batch_size_valid = create_memo(cx, || {
         Settings::valid_elasticsearch_batch_size(&elasticsearch_batch_size_str.get())
@@ -295,7 +311,7 @@ pub fn Settings<'a, G: Html>(
             || !*nnserver_url_valid.get()
             || !*debouncer_timeout_valid.get()
             || !*max_file_size_valid.get()
-            || !*nnserver_batch_size_valid.get()
+            || !*max_concurrent_files_valid.get()
             || !*elasticsearch_batch_size_valid.get()
             || !*max_sentences_valid.get()
             || !*sentences_per_paragraph_valid.get()
@@ -311,9 +327,13 @@ pub fn Settings<'a, G: Html>(
         open_on_start.set(settings.get().get_open_on_start());
         indexing_directories.set(settings.get().get_indexing_directories_dir_items());
         exclude_file_regex.set(settings.get().get_exclude_file_regex());
+        watcher_enabled.set(settings.get().get_watcher_enabled());
+        debouncer_timeout_str.set(settings.get().get_debouncer_timeout_str());
         max_file_size_str.set(settings.get().get_max_file_size_str());
-        nnserver_batch_size_str.set(settings.get().get_nnserver_batch_size_str());
+        max_concurrent_files_str.set(settings.get().get_max_concurrent_files_str());
         elasticsearch_batch_size_str.set(settings.get().get_elasticsearch_batch_size_str());
+        text_search_enabled.set(settings.get().get_text_search_enabled());
+        image_search_enabled.set(settings.get().get_image_search_enabled());
         max_sentences_str.set(settings.get().get_max_sentences_str());
         sentences_per_paragraph_str.set(settings.get().get_sentences_per_paragraph_str());
         results_per_page_str.set(settings.get().get_results_per_page_str());
@@ -355,8 +375,10 @@ pub fn Settings<'a, G: Html>(
                 *watcher_enabled.get(),
                 &debouncer_timeout_str.get(),
                 &max_file_size_str.get(),
-                &nnserver_batch_size_str.get(),
+                &max_concurrent_files_str.get(),
                 &elasticsearch_batch_size_str.get(),
+                *text_search_enabled.get(),
+                *image_search_enabled.get(),
                 &max_sentences_str.get(),
                 &sentences_per_paragraph_str.get(),
                 &results_per_page_str.get(),
@@ -407,10 +429,14 @@ pub fn Settings<'a, G: Html>(
                             value=debouncer_timeout_str, valid=debouncer_timeout_valid)
                         NumberSetting(id="max_file_size", label="Максимальный размер файла (МиБ): ",
                             value=max_file_size_str, valid=max_file_size_valid)
-                        NumberSetting(id="nnserver_batch_size", label="Максимальное количество одновременно обрабатываемых документов: ",
-                            value=nnserver_batch_size_str, valid=nnserver_batch_size_valid)
+                        NumberSetting(id="max_concurrent_files", label="Максимальное количество одновременно обрабатываемых документов: ",
+                            value=max_concurrent_files_str, valid=max_concurrent_files_valid)
                         NumberSetting(id="elasticsearch_batch_size", label="Количество отправляемых в Elasticsearch изменений за раз: ",
                             value=elasticsearch_batch_size_str, valid=elasticsearch_batch_size_valid)
+                        CheckboxSetting(id="text_search_enabled", label="Семантический поиск по тексту: ",
+                            value=text_search_enabled)
+                        CheckboxSetting(id="image_search_enabled", label="Семантический поиск по изображениям: ",
+                            value=image_search_enabled)
                         NumberSetting(id="max_sentences", label="Максимальное количество предложений, обрабатываемых нейронной сетью: ",
                             value=max_sentences_str, valid=max_sentences_valid)
                         NumberSetting(id="sentences_per_paragraph", label="Количество предложений, обрабатываемых за один раз: ",

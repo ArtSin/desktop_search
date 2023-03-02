@@ -330,7 +330,7 @@ async fn get_request_body(
     max_sentences: u32,
     sentences_per_paragraph: u32,
     results_per_page: u32,
-    reqwest_client: &reqwest::Client,
+    reqwest_client: &reqwest_middleware::ClientWithMiddleware,
     nnserver_url: Url,
     knn_candidates_multiplier: u32,
     search_request: &SearchRequest,

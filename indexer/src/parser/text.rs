@@ -32,27 +32,30 @@ impl Parser for TextParser {
             file.path.display()
         );
 
-        let (max_sentences, sentences_per_paragraph, nnserver_url) = {
-            let tmp = state.settings.read().await;
-            (
-                tmp.other.max_sentences,
-                tmp.other.sentences_per_paragraph,
-                tmp.other.nnserver_url.clone(),
+        let text_search_enabled = state.settings.read().await.other.text_search_enabled;
+        if text_search_enabled {
+            let (max_sentences, sentences_per_paragraph, nnserver_url) = {
+                let tmp = state.settings.read().await;
+                (
+                    tmp.other.max_sentences,
+                    tmp.other.sentences_per_paragraph,
+                    tmp.other.nnserver_url.clone(),
+                )
+            };
+            let embedding = get_text_search_embedding(
+                max_sentences,
+                sentences_per_paragraph,
+                &state.reqwest_client,
+                nnserver_url,
+                BatchRequest { batched: true },
+                file.content.as_ref().unwrap_or_log(),
             )
-        };
-        let embedding = get_text_search_embedding(
-            max_sentences,
-            sentences_per_paragraph,
-            &state.reqwest_client,
-            nnserver_url,
-            BatchRequest { batched: true },
-            file.content.as_ref().unwrap_or_log(),
-        )
-        .await?;
+            .await?;
 
-        file.text_data = TextData {
-            text_embedding: Some(embedding.embedding),
-        };
+            file.text_data = TextData {
+                text_embedding: Some(embedding.embedding),
+            };
+        }
         Ok(())
     }
 }

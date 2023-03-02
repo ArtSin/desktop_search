@@ -12,6 +12,7 @@ use common_lib::indexer::{IndexingEvent, IndexingStatus};
 use elasticsearch::{http::transport::Transport, Elasticsearch};
 use notify::RecommendedWatcher;
 use notify_debouncer_mini::Debouncer;
+use reqwest_retry::{policies::ExponentialBackoff, RetryTransientMiddleware};
 use tokio::{
     signal,
     sync::{broadcast, RwLock},
@@ -43,7 +44,7 @@ mod watcher;
 pub struct ServerState {
     settings: RwLock<InternalSettings>,
     es_client: Elasticsearch,
-    reqwest_client: reqwest::Client,
+    reqwest_client: reqwest_middleware::ClientWithMiddleware,
     indexing_status: RwLock<IndexingStatus>,
     indexing_events: broadcast::Sender<IndexingEvent>,
     watcher_debouncer: RwLock<Option<Debouncer<RecommendedWatcher>>>,
@@ -75,15 +76,22 @@ async fn main() {
         .expect_or_log("Can't create Elasticsearch index");
 
     let open_on_start = settings.other.open_on_start;
-    let indexing_events_channel_capacity = 2 * settings.other.nnserver_batch_size;
+    let indexing_events_channel_capacity = 2 * settings.other.max_concurrent_files;
+
+    let retry_policy = ExponentialBackoff::builder().build_with_max_retries(3);
+    let reqwest_client = reqwest_middleware::ClientBuilder::new(
+        reqwest::Client::builder()
+            .timeout(Duration::from_secs(30))
+            .build()
+            .unwrap_or_log(),
+    )
+    .with(RetryTransientMiddleware::new_with_policy(retry_policy))
+    .build();
 
     let server_state = Arc::new(ServerState {
         settings: RwLock::new(settings),
         es_client,
-        reqwest_client: reqwest::Client::builder()
-            .timeout(Duration::from_secs(30))
-            .build()
-            .unwrap_or_log(),
+        reqwest_client,
         indexing_status: RwLock::new(IndexingStatus::NotStarted),
         indexing_events: broadcast::channel(indexing_events_channel_capacity).0,
         watcher_debouncer: RwLock::new(None),

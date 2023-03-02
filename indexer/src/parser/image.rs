@@ -9,7 +9,9 @@ use serde::Deserialize;
 use serde_with::{serde_as, DisplayFromStr};
 
 use crate::{
-    embeddings::{get_image_search_image_embedding, get_image_search_image_embedding_generic},
+    embeddings::{
+        get_image_search_image_embedding, get_image_search_image_embedding_generic, ImageEmbedding,
+    },
     thumbnails::get_thumbnail,
     ServerState,
 };
@@ -87,46 +89,48 @@ impl Parser for ImageParser {
             file.path.display()
         );
 
-        let nnserver_url = state.settings.read().await.other.nnserver_url.clone();
-        let embedding = if metadata.content_type.starts_with("image") {
-            Some(
+        let image_search_enabled = state.settings.read().await.other.image_search_enabled;
+        let embedding = if image_search_enabled {
+            let nnserver_url = state.settings.read().await.other.nnserver_url.clone();
+            if metadata.content_type.starts_with("image") {
                 get_image_search_image_embedding(
                     &state.reqwest_client,
                     nnserver_url,
                     BatchRequest { batched: true },
                     &file.path,
                 )
-                .await?,
-            )
-        } else {
-            // Try to get thumbnail for audio/video files, ignore errors
-            match get_thumbnail(&file.path.to_string_lossy(), &None).await {
-                Ok(thumbnail) => {
-                    match get_image_search_image_embedding_generic(
-                        &state.reqwest_client,
-                        nnserver_url,
-                        BatchRequest { batched: true },
-                        thumbnail.0,
-                    )
-                    .await
-                    {
-                        Ok(res) => Some(res),
-                        Err(err) => {
-                            tracing::debug!("Error calculating embedding of thumbnail: {}", err);
-                            None
+                .await?
+            } else {
+                // Try to get thumbnail for audio/video files, ignore errors
+                match get_thumbnail(&file.path.to_string_lossy(), &None).await {
+                    Ok(thumbnail) => {
+                        match get_image_search_image_embedding_generic(
+                            &state.reqwest_client,
+                            nnserver_url,
+                            BatchRequest { batched: true },
+                            thumbnail.0,
+                        )
+                        .await
+                        {
+                            Ok(res) => res,
+                            Err(err) => {
+                                tracing::debug!(
+                                    "Error calculating embedding of thumbnail: {}",
+                                    err
+                                );
+                                ImageEmbedding { embedding: None }
+                            }
                         }
                     }
-                }
-                Err(err) => {
-                    tracing::debug!("Error getting thumbnail of file: {}", err);
-                    None
+                    Err(err) => {
+                        tracing::debug!("Error getting thumbnail of file: {}", err);
+                        ImageEmbedding { embedding: None }
+                    }
                 }
             }
+        } else {
+            ImageEmbedding { embedding: None }
         };
-        if embedding.is_none() {
-            return Ok(());
-        }
-        let embedding = embedding.unwrap();
 
         let data = std::mem::take(&mut metadata.image_data);
         file.image_data = ImageData {

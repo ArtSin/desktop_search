@@ -1,12 +1,11 @@
-use std::{
-    path::PathBuf,
-    time::{Duration, Instant},
-};
+use std::{path::PathBuf, time::Instant};
 
 use common_lib::search::{QueryType, SearchRequest, SearchResponse, TextQuery};
 use reqwest::Url;
 use serde::{Deserialize, Serialize};
 use tracing_unwrap::{OptionExt, ResultExt};
+
+use crate::get_reqwest_client;
 
 const MAX_RANK: usize = 100;
 
@@ -31,7 +30,7 @@ struct ImageCaptionResult {
 }
 
 async fn process_caption(
-    reqwest_client: &reqwest::Client,
+    reqwest_client: &reqwest_middleware::ClientWithMiddleware,
     search_url: Url,
     caption: Caption,
 ) -> ImageCaptionResult {
@@ -150,10 +149,7 @@ pub async fn benchmark(captions_path: PathBuf, results_dir: PathBuf, indexer_add
     let captions: Captions = serde_json::from_str(&json_str).expect_or_log("Error parsing file");
 
     // Create reqwest client for HTTP requests
-    let reqwest_client = reqwest::Client::builder()
-        .timeout(Duration::from_secs(30))
-        .build()
-        .unwrap_or_log();
+    let reqwest_client = get_reqwest_client();
     let mut search_url = indexer_address.clone();
     search_url.set_path("/search");
 

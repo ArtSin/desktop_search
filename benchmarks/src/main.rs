@@ -1,10 +1,12 @@
-use std::path::PathBuf;
+use std::{path::PathBuf, time::Duration};
 
 use clap::{Parser, Subcommand};
 use reqwest::Url;
+use reqwest_retry::{policies::ExponentialBackoff, RetryTransientMiddleware};
 use tracing_subscriber::{
     filter::LevelFilter, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter,
 };
+use tracing_unwrap::ResultExt;
 
 mod coco;
 mod mrobust;
@@ -64,6 +66,18 @@ enum MRobustCommands {
         /// Path to the results file
         result_path: PathBuf,
     },
+}
+
+fn get_reqwest_client() -> reqwest_middleware::ClientWithMiddleware {
+    let retry_policy = ExponentialBackoff::builder().build_with_max_retries(3);
+    reqwest_middleware::ClientBuilder::new(
+        reqwest::Client::builder()
+            .timeout(Duration::from_secs(30))
+            .build()
+            .unwrap_or_log(),
+    )
+    .with(RetryTransientMiddleware::new_with_policy(retry_policy))
+    .build()
 }
 
 #[tokio::main]

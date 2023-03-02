@@ -2,6 +2,8 @@ use std::{fmt::Display, mem::take, time::Duration};
 
 use serde::{Deserialize, Serialize};
 
+pub const MAX_ERROR_CNT: usize = 20;
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum IndexingEvent {
     Started,
@@ -25,6 +27,7 @@ pub struct IndexingStatusData {
     pub processed: usize,
     pub sent: usize,
     pub duration: Option<Duration>,
+    pub errors_cnt: usize,
     pub errors: Vec<String>,
 }
 
@@ -88,7 +91,10 @@ impl IndexingStatus {
             },
             IndexingEvent::Error(e) => match self {
                 Self::Indexing(data) => {
-                    data.errors.push(e);
+                    data.errors_cnt += 1;
+                    if data.errors.len() < MAX_ERROR_CNT {
+                        data.errors.push(e);
+                    }
                 }
                 _ => unreachable!(),
             },
