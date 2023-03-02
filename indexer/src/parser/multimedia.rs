@@ -63,6 +63,7 @@ impl Parser for MultimediaParser {
         _state: Arc<ServerState>,
         file: &mut FileES,
         metadata: &mut Metadata,
+        _file_bytes: &[u8],
     ) -> anyhow::Result<()> {
         let data = std::mem::take(&mut metadata.multimedia_data);
         file.multimedia_data = MultimediaData {

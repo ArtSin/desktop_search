@@ -65,6 +65,7 @@ impl Parser for DocumentParser {
         _state: Arc<ServerState>,
         file: &mut FileES,
         metadata: &mut Metadata,
+        _file_bytes: &[u8],
     ) -> anyhow::Result<()> {
         let data = std::mem::take(&mut metadata.document_data);
         file.document_data = DocumentData {

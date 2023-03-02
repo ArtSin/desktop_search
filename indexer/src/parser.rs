@@ -30,6 +30,7 @@ pub trait Parser {
         state: Arc<ServerState>,
         file: &mut FileES,
         metadata: &mut Metadata,
+        file_bytes: &[u8],
     ) -> anyhow::Result<()>;
 }
 
@@ -62,9 +63,12 @@ impl Default for Metadata {
     }
 }
 
-async fn get_metadata(state: Arc<ServerState>, file: &mut FileES) -> anyhow::Result<Metadata> {
+async fn get_metadata_and_bytes(
+    state: Arc<ServerState>,
+    file: &mut FileES,
+) -> anyhow::Result<(Metadata, Vec<u8>)> {
     if file.size == 0 {
-        return Ok(Metadata::default());
+        return Ok((Metadata::default(), Vec::new()));
     }
 
     let mut tika_meta_url = state.settings.read().await.other.tika_url.clone();
@@ -74,16 +78,16 @@ async fn get_metadata(state: Arc<ServerState>, file: &mut FileES) -> anyhow::Res
     let [metadata]: [Metadata; 1] = req_builder
         .header("Accept", "application/json")
         .header("maxEmbeddedResources", "0")
-        .body(file)
+        .body(file.clone())
         .send()
         .await?
         .json()
         .await?;
-    Ok(metadata)
+    Ok((metadata, file))
 }
 
 pub async fn parse_file(state: Arc<ServerState>, file: &mut FileES) -> anyhow::Result<()> {
-    let mut metadata = get_metadata(Arc::clone(&state), file).await?;
+    let (mut metadata, file_bytes) = get_metadata_and_bytes(Arc::clone(&state), file).await?;
     let mut content_type_mime: Mime = metadata.content_type.parse()?;
     if content_type_mime.type_() == mime::TEXT {
         let new_mime = mime_guess::from_path(&file.path).first_or_octet_stream();
@@ -100,7 +104,7 @@ pub async fn parse_file(state: Arc<ServerState>, file: &mut FileES) -> anyhow::R
     for parser in PARSERS {
         if parser.is_supported_file(&metadata) {
             parser
-                .parse(Arc::clone(&state), file, &mut metadata)
+                .parse(Arc::clone(&state), file, &mut metadata, &file_bytes)
                 .await?;
         }
     }

@@ -9,9 +9,7 @@ use serde::Deserialize;
 use serde_with::{serde_as, DisplayFromStr};
 
 use crate::{
-    embeddings::{
-        get_image_search_image_embedding, get_image_search_image_embedding_generic, ImageEmbedding,
-    },
+    embeddings::{get_image_search_image_embedding_generic, ImageEmbedding},
     thumbnails::get_thumbnail,
     ServerState,
 };
@@ -83,6 +81,7 @@ impl Parser for ImageParser {
         state: Arc<ServerState>,
         file: &mut FileES,
         metadata: &mut Metadata,
+        file_bytes: &[u8],
     ) -> anyhow::Result<()> {
         tracing::debug!(
             "Calculating image embedding of file: {}",
@@ -93,11 +92,11 @@ impl Parser for ImageParser {
         let embedding = if image_search_enabled {
             let nnserver_url = state.settings.read().await.other.nnserver_url.clone();
             if metadata.content_type.starts_with("image") {
-                get_image_search_image_embedding(
+                get_image_search_image_embedding_generic(
                     &state.reqwest_client,
                     nnserver_url,
                     BatchRequest { batched: true },
-                    &file.path,
+                    file_bytes.to_vec(),
                 )
                 .await?
             } else {
