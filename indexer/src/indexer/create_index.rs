@@ -64,7 +64,7 @@ pub async fn create_index(es_client: &Elasticsearch) -> Result<(), elasticsearch
                             "shingles": {
                                 "type": "shingle",
                                 "min_shingle_size": 2,
-                                "max_shingle_size": 3
+                                "max_shingle_size": 2
                             }
                         },
                         "analyzer": {

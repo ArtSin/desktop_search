@@ -17,7 +17,7 @@ use crate::{
     Embedding, PATH_PREFIX,
 };
 
-const BATCH_SIZE: usize = 32;
+const BATCH_SIZE: usize = 64;
 const MAX_DELAY: Duration = Duration::from_millis(100);
 const MAX_CAPACITY: usize = 2 * BATCH_SIZE;
 

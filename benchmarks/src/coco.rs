@@ -142,7 +142,7 @@ fn write_recall(
     writer.write_record(recall.1.map(|x| x.to_string()))
 }
 
-pub async fn benchmark_coco(captions_path: PathBuf, results_dir: PathBuf, indexer_address: Url) {
+pub async fn benchmark(captions_path: PathBuf, results_dir: PathBuf, indexer_address: Url) {
     // Read captions from JSON file
     let json_str = tokio::fs::read_to_string(captions_path)
         .await
@@ -160,7 +160,7 @@ pub async fn benchmark_coco(captions_path: PathBuf, results_dir: PathBuf, indexe
     // Process all captions
     let mut results = Vec::new();
     let captions_cnt = captions.annotations.len();
-    for (i, caption) in captions.annotations.into_iter().enumerate().take(100) {
+    for (i, caption) in captions.annotations.into_iter().enumerate() {
         results.push(process_caption(&reqwest_client, search_url.clone(), caption).await);
         tracing::info!("Processed {}/{}", i + 1, captions_cnt);
     }
