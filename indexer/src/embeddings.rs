@@ -15,6 +15,17 @@ pub struct TextEmbedding {
     pub embedding: Vec<f32>,
 }
 
+#[derive(Deserialize)]
+pub struct SummaryTextEmbedding {
+    pub embedding: Vec<f32>,
+    pub summary: Vec<String>,
+}
+
+#[derive(Deserialize)]
+pub struct Scores {
+    pub scores: Vec<f32>,
+}
+
 pub async fn get_image_search_image_embedding_generic<T: Into<reqwest::Body>>(
     reqwest_client: &reqwest_middleware::ClientWithMiddleware,
     mut nnserver_url: Url,
@@ -66,14 +77,37 @@ pub async fn get_text_search_embedding(
     mut nnserver_url: Url,
     batch_request: BatchRequest,
     text: &str,
-) -> anyhow::Result<TextEmbedding> {
+    summary_enabled: bool,
+) -> anyhow::Result<SummaryTextEmbedding> {
     nnserver_url.set_path("minilm/text");
     let req_builder = reqwest_client.post(nnserver_url).query(&batch_request);
     let embedding = req_builder
         .json(&json!({
             "text": text,
             "max_sentences": max_sentences,
-            "sentences_per_paragraph": sentences_per_paragraph
+            "sentences_per_paragraph": sentences_per_paragraph,
+            "summary_enabled": summary_enabled,
+        }))
+        .send()
+        .await?
+        .json()
+        .await?;
+    Ok(embedding)
+}
+
+pub async fn get_rerank_scores(
+    reqwest_client: &reqwest_middleware::ClientWithMiddleware,
+    mut nnserver_url: Url,
+    batch_request: BatchRequest,
+    queries: Vec<String>,
+    paragraphs: Vec<String>,
+) -> anyhow::Result<Scores> {
+    nnserver_url.set_path("minilm/rerank");
+    let req_builder = reqwest_client.post(nnserver_url).query(&batch_request);
+    let embedding = req_builder
+        .json(&json!({
+            "queries": queries,
+            "paragraphs": paragraphs,
         }))
         .send()
         .await?

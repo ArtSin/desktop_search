@@ -1,6 +1,6 @@
 use ndarray::{Array2, ArrayD, ArrayViewD, Axis};
 
-use tokenizers::Tokenizer;
+use tokenizers::{EncodeInput, Tokenizer};
 use tracing_unwrap::{OptionExt, ResultExt};
 
 pub struct PreprocessedText {
@@ -9,50 +9,45 @@ pub struct PreprocessedText {
     pub type_ids: Option<Array2<i64>>,
 }
 
-pub fn preprocess_texts(
+pub fn preprocess_texts<'a, T: Into<EncodeInput<'a>> + Send>(
     tokenizer: &Tokenizer,
-    texts: Vec<String>,
+    texts: Vec<T>,
     type_ids: bool,
 ) -> tokenizers::Result<PreprocessedText> {
-    tokenizer.encode_batch(texts, true).map(|encodings| {
-        let sequence_length = encodings[0].get_ids().len();
-        let input_ids: Vec<_> = encodings
-            .iter()
-            .flat_map(|a| a.get_ids().iter().map(|x| *x as i64).collect::<Vec<_>>())
-            .collect();
-        let attention_mask: Vec<_> = encodings
+    let encodings = tokenizer.encode_batch(texts, true)?;
+    let sequence_length = encodings[0].get_ids().len();
+    let input_ids: Vec<_> = encodings
+        .iter()
+        .flat_map(|a| a.get_ids().iter().map(|x| *x as i64).collect::<Vec<_>>())
+        .collect();
+    let attention_mask: Vec<_> = encodings
+        .iter()
+        .flat_map(|a| {
+            a.get_attention_mask()
+                .iter()
+                .map(|x| *x as i64)
+                .collect::<Vec<_>>()
+        })
+        .collect();
+    let type_ids: Option<Vec<_>> = type_ids.then(|| {
+        encodings
             .iter()
             .flat_map(|a| {
-                a.get_attention_mask()
+                a.get_type_ids()
                     .iter()
                     .map(|x| *x as i64)
                     .collect::<Vec<_>>()
             })
-            .collect();
-        let type_ids: Option<Vec<_>> = type_ids.then(|| {
-            encodings
-                .iter()
-                .flat_map(|a| {
-                    a.get_type_ids()
-                        .iter()
-                        .map(|x| *x as i64)
-                        .collect::<Vec<_>>()
-                })
-                .collect()
-        });
+            .collect()
+    });
 
-        PreprocessedText {
-            input_ids: Array2::from_shape_vec((encodings.len(), sequence_length), input_ids)
-                .unwrap_or_log(),
-            attention_mask: Array2::from_shape_vec(
-                (encodings.len(), sequence_length),
-                attention_mask,
-            )
+    Ok(PreprocessedText {
+        input_ids: Array2::from_shape_vec((encodings.len(), sequence_length), input_ids)
             .unwrap_or_log(),
-            type_ids: type_ids.map(|x| {
-                Array2::from_shape_vec((encodings.len(), sequence_length), x).unwrap_or_log()
-            }),
-        }
+        attention_mask: Array2::from_shape_vec((encodings.len(), sequence_length), attention_mask)
+            .unwrap_or_log(),
+        type_ids: type_ids
+            .map(|x| Array2::from_shape_vec((encodings.len(), sequence_length), x).unwrap_or_log()),
     })
 }
 

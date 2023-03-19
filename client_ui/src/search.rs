@@ -75,11 +75,13 @@ pub fn Search<'a, G: Html>(
     let content_enabled = create_signal(cx, true);
     let text_search_enabled = create_signal(cx, true);
     let image_search_enabled = create_signal(cx, true);
+    let reranking_enabled = create_signal(cx, false);
     let text_search_pages = create_signal(cx, 1);
     let image_search_pages = create_signal(cx, 1);
     let query_coeff = create_signal(cx, 1.0);
     let text_search_coeff = create_signal(cx, 2.0);
     let image_search_coeff = create_signal(cx, 2.0);
+    let reranking_coeff = create_signal(cx, 1.0);
 
     let display_filters = create_signal(cx, true);
     let path_prefix = create_signal(cx, None);
@@ -146,11 +148,13 @@ pub fn Search<'a, G: Html>(
                     content_enabled: *content_enabled.get(),
                     text_search_enabled: *text_search_enabled.get(),
                     image_search_enabled: *image_search_enabled.get(),
+                    reranking_enabled: *reranking_enabled.get(),
                     text_search_pages: *text_search_pages.get(),
                     image_search_pages: *image_search_pages.get(),
                     query_coeff: *query_coeff.get(),
                     text_search_coeff: *text_search_coeff.get(),
                     image_search_coeff: *image_search_coeff.get(),
+                    reranking_coeff: *reranking_coeff.get(),
                 }),
                 QueryType::Image => common_lib::search::QueryType::Image(ImageQuery {
                     image_path: (*query_image_path.get()).clone(),
@@ -247,6 +251,8 @@ pub fn Search<'a, G: Html>(
                                         value_enabled=text_search_enabled)
                                     CheckboxFilter(text="Семантический поиск по изображениям", id="image_search",
                                         value_enabled=image_search_enabled)
+                                    CheckboxFilter(text="Переранжирование", id="reranking",
+                                        value_enabled=reranking_enabled)
                                 }
 
                                 details {
@@ -267,6 +273,8 @@ pub fn Search<'a, G: Html>(
                                         min=1.0, max=10.0, step=0.1, value=text_search_coeff)
                                     RangeWidget(legend="Семантический по изображениям", id="image_search_coeff",
                                         min=1.0, max=10.0, step=0.1, value=image_search_coeff)
+                                    RangeWidget(legend="Переранжирование", id="reranking_coeff",
+                                        min=0.1, max=5.0, step=0.1, value=reranking_coeff)
                                 }
                             }
                         }
@@ -477,7 +485,7 @@ fn Preview<'a, G: Html>(
                         });
 
                         view! { cx,
-                            pre(id="preview_object", style="overflow: scroll;")
+                            pre(id="preview_object", style="overflow: scroll; white-space: pre-wrap;")
                         }
                     } else {
                         let object_url = object_url.clone();

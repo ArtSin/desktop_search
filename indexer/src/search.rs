@@ -18,8 +18,8 @@ use uuid::Uuid;
 
 use crate::{
     embeddings::{
-        get_image_search_image_embedding, get_image_search_text_embedding,
-        get_text_search_embedding,
+        get_image_search_image_embedding, get_image_search_text_embedding, get_rerank_scores,
+        get_text_search_embedding, Scores,
     },
     ServerState,
 };
@@ -361,6 +361,7 @@ async fn get_request_body(
                     nnserver_url.clone(),
                     BatchRequest { batched: false },
                     query,
+                    false,
                 )
                 .await?;
 
@@ -537,12 +538,74 @@ fn get_highlighted_optional_field(
     field_value.map(|field_val| get_highlighted_field(result_value, field, field_val))
 }
 
+async fn rerank_results(
+    state: Arc<ServerState>,
+    nnserver_url: Url,
+    query: &QueryType,
+    results: Vec<SearchResult>,
+) -> anyhow::Result<Vec<SearchResult>> {
+    match query {
+        QueryType::Text(TextQuery {
+            ref query,
+            reranking_enabled,
+            reranking_coeff,
+            ..
+        }) => {
+            if !reranking_enabled {
+                return Ok(results);
+            }
+
+            let mut tasks = Vec::new();
+            for res in &results {
+                let state = Arc::clone(&state);
+                let nnserver_url = nnserver_url.clone();
+                let query = query.clone();
+                let summary = res.file.text_data.summary.clone();
+
+                tasks.push(tokio::spawn(async move {
+                    if summary.is_empty() {
+                        return Ok(Scores { scores: Vec::new() });
+                    }
+                    let queries = (0..summary.len()).map(|_| query.clone()).collect();
+                    get_rerank_scores(
+                        &state.reqwest_client,
+                        nnserver_url,
+                        BatchRequest { batched: true },
+                        queries,
+                        summary,
+                    )
+                    .await
+                }));
+            }
+            let mut results_with_scores = Vec::new();
+            for (task, mut res) in tasks.into_iter().zip(results) {
+                let scores = task.await.unwrap_or_log()?;
+                if let Some((max_i, max_score)) = scores
+                    .scores
+                    .into_iter()
+                    .enumerate()
+                    .reduce(|acc, x| if x.1 > acc.1 { x } else { acc })
+                {
+                    res.score += reranking_coeff * max_score;
+                    res.highlights.summary = Some(res.file.text_data.summary[max_i].clone());
+                }
+                results_with_scores.push(res);
+            }
+
+            results_with_scores.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or_log());
+            Ok(results_with_scores)
+        }
+        _ => Ok(results),
+    }
+}
+
 fn get_results(es_response_body: &Value) -> Vec<SearchResult> {
     es_response_body["hits"]["hits"]
         .as_array()
         .unwrap_or_log()
         .iter()
         .map(|val| {
+            let score = val["_score"].as_f64().unwrap_or_log() as f32;
             let mut file_es: FileES =
                 serde_json::from_value(val["_source"].clone()).unwrap_or_log();
             file_es._id = Some(val["_id"].as_str().unwrap_or_log().to_owned());
@@ -550,6 +613,7 @@ fn get_results(es_response_body: &Value) -> Vec<SearchResult> {
                 path: get_highlighted_field(val, "path", file_es.path.to_str().unwrap_or_log()),
                 hash: get_highlighted_optional_field(val, "hash", file_es.hash.as_deref()),
                 content: get_highlighted_optional_field(val, "content", file_es.content.as_deref()),
+                summary: None,
                 image_data: ImageHighlightedFields {
                     image_make: get_highlighted_optional_field(
                         val,
@@ -621,6 +685,7 @@ fn get_results(es_response_body: &Value) -> Vec<SearchResult> {
             SearchResult {
                 file: file_es,
                 highlights,
+                score,
                 id: Uuid::new_v4(),
             }
         })
@@ -696,7 +761,7 @@ pub async fn search(
         sentences_per_paragraph,
         results_per_page,
         &state.reqwest_client,
-        nnserver_url,
+        nnserver_url.clone(),
         knn_candidates_multiplier,
         &search_request,
     )
@@ -710,7 +775,10 @@ pub async fn search(
     )
     .await
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
-    let results = get_results(&es_response_body);
+    let mut results = get_results(&es_response_body);
+    results = rerank_results(state, nnserver_url, &search_request.query, results)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
     let pages = get_pages(results_per_page, &es_response_body, search_request.page);
     let suggestion = get_suggestion(&es_response_body);
     Ok(Json(SearchResponse {

@@ -104,6 +104,13 @@ pub(super) fn SearchResults<'a, G: Html>(
                         } else {
                             view! { cx, }
                         })
+                        (if let Some(summary) = item.highlights.summary.clone() {
+                            view! { cx,
+                                p(style="overflow-wrap: anywhere;") { (summary) }
+                            }
+                        } else {
+                            view! { cx, }
+                        })
 
                         details {
                             summary { "Основные свойства файла" }

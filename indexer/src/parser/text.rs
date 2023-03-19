@@ -50,11 +50,13 @@ impl Parser for TextParser {
                 nnserver_url,
                 BatchRequest { batched: true },
                 file.content.as_ref().unwrap_or_log(),
+                true,
             )
             .await?;
 
             file.text_data = TextData {
                 text_embedding: Some(embedding.embedding),
+                summary: embedding.summary,
             };
         }
         Ok(())

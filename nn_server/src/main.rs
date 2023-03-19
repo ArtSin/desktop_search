@@ -5,7 +5,7 @@ use axum::{
     BoxError, Router,
 };
 use clap::Parser;
-use ndarray::ArrayD;
+use ndarray::{Array, ArrayD, Dimension};
 use onnxruntime::{environment::Environment, LoggingLevel};
 use serde::Serialize;
 use tokio::signal;
@@ -19,6 +19,8 @@ use tracing_unwrap::ResultExt;
 mod batch_processing;
 mod clip_image;
 mod clip_text;
+mod lexrank;
+mod minilm_rerank;
 mod minilm_text;
 mod text_processing;
 
@@ -30,18 +32,16 @@ pub struct Embedding {
 }
 
 impl Embedding {
-    pub fn from_unnormalized_array(embedding: ArrayD<f32>) -> Self {
+    pub fn normalize<D: Dimension>(arr: Array<f32, D>) -> Array<f32, D> {
         const NORMALIZE_EPS: f32 = 1e-12;
 
-        let norm = embedding
-            .mapv(|x| x.powi(2))
-            .sum()
-            .sqrt()
-            .max(NORMALIZE_EPS);
-        let normalized_embedding = embedding / norm;
+        let norm = arr.mapv(|x| x.powi(2)).sum().sqrt().max(NORMALIZE_EPS);
+        arr / norm
+    }
 
+    pub fn from_unnormalized_array(embedding: ArrayD<f32>) -> Self {
         Self {
-            embedding: normalized_embedding.into_iter().collect(),
+            embedding: Embedding::normalize(embedding).into_iter().collect(),
         }
     }
 }
@@ -74,6 +74,7 @@ async fn main() {
         .route("/clip/image", post(clip_image::process_request))
         .route("/clip/text", post(clip_text::process_request))
         .route("/minilm/text", post(minilm_text::process_request))
+        .route("/minilm/rerank", post(minilm_rerank::process_request))
         .layer(DefaultBodyLimit::max(100 * 1024 * 1024))
         .layer(
             ServiceBuilder::new()
@@ -108,6 +109,7 @@ fn initialize_models() -> anyhow::Result<()> {
     clip_image::initialize_model(&environment)?;
     clip_text::initialize_model(&environment)?;
     minilm_text::initialize_model(&environment)?;
+    minilm_rerank::initialize_model(&environment)?;
     Ok(())
 }
 

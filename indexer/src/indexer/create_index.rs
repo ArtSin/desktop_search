@@ -166,6 +166,10 @@ pub async fn create_index(es_client: &Elasticsearch) -> Result<(), elasticsearch
                         "index": true,
                         "similarity": "dot_product"
                     },
+                    "summary": {
+                        "type": "object",
+                        "enabled": false
+                    },
 
                     // Fields for image files
                     "image_embedding": {

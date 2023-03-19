@@ -41,11 +41,13 @@ pub struct TextQuery {
     pub content_enabled: bool,
     pub text_search_enabled: bool,
     pub image_search_enabled: bool,
+    pub reranking_enabled: bool,
     pub text_search_pages: u32,
     pub image_search_pages: u32,
     pub query_coeff: f64,
     pub text_search_coeff: f64,
     pub image_search_coeff: f64,
+    pub reranking_coeff: f32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -134,6 +136,7 @@ pub struct HighlightedFields {
     pub path: String,
     pub hash: Option<String>,
     pub content: Option<String>,
+    pub summary: Option<String>,
     /// Fields for image files
     pub image_data: ImageHighlightedFields,
     /// Fields for multimedia files
@@ -175,6 +178,7 @@ pub struct DocumentHighlightedFields {
 pub struct SearchResult {
     pub file: FileES,
     pub highlights: HighlightedFields,
+    pub score: f32,
     pub id: Uuid,
 }
 

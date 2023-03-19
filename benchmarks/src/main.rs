@@ -31,6 +31,7 @@ enum Commands {
         results_dir: PathBuf,
     },
     /// Evaluate text-to-text search on mRobust dataset
+    #[command(name = "mrobust")]
     MRobust(MRobust),
 }
 
@@ -53,14 +54,20 @@ enum MRobustCommands {
     /// Before running, you must index all documents and set number of results per page to 100
     Run {
         /// Enable content search
-        #[arg(short, long, action)]
+        #[arg(short = 'c', long, action)]
         content_enabled: bool,
         /// Enable semantic text search
-        #[arg(short, long, action)]
+        #[arg(short = 't', long, action)]
         text_search_enabled: bool,
+        /// Enable reranking
+        #[arg(short = 'r', long, action)]
+        reranking_enabled: bool,
         /// Semantic text search coefficient
         #[arg(short = 'k', long, default_value_t = 1.0)]
         text_search_coeff: f64,
+        /// Reranking coefficient
+        #[arg(short = 'l', long, default_value_t = 1.0)]
+        reranking_coeff: f32,
         /// Path to the queries file
         queries_path: PathBuf,
         /// Path to the results file
@@ -106,14 +113,18 @@ async fn main() {
             MRobustCommands::Run {
                 content_enabled,
                 text_search_enabled,
+                reranking_enabled,
                 text_search_coeff,
+                reranking_coeff,
                 queries_path,
                 result_path,
             } => {
                 mrobust::benchmark(
                     content_enabled,
                     text_search_enabled,
+                    reranking_enabled,
                     text_search_coeff,
+                    reranking_coeff,
                     queries_path,
                     result_path,
                     args.indexer_address,

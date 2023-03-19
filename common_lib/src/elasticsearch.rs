@@ -59,6 +59,7 @@ pub struct FileES {
 pub struct TextData {
     /// MiniLM embedding of text
     pub text_embedding: Option<Vec<f32>>,
+    pub summary: Vec<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Display, Serialize, Deserialize)]

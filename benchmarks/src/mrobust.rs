@@ -46,10 +46,14 @@ pub async fn create_files(collection_path: PathBuf, output_dir: PathBuf) {
         let doc: Document = res.expect_or_log("Error reading record");
 
         let mut doc_path = output_dir.clone();
-        doc_path.push(&doc.id[0..2]);
-        _ = tokio::fs::create_dir(&doc_path).await;
-        doc_path.push(&doc.id[2..4]);
-        _ = tokio::fs::create_dir(&doc_path).await;
+        if doc.id.len() >= 2 {
+            doc_path.push(&doc.id[0..2]);
+            _ = tokio::fs::create_dir(&doc_path).await;
+            if doc.id.len() >= 4 {
+                doc_path.push(&doc.id[2..4]);
+                _ = tokio::fs::create_dir(&doc_path).await;
+            }
+        }
         doc_path.push(format!("{}.txt", doc.id));
 
         tokio::fs::write(doc_path, doc.text)
@@ -63,7 +67,9 @@ async fn process_query(
     search_url: Url,
     content_enabled: bool,
     text_search_enabled: bool,
+    reranking_enabled: bool,
     text_search_coeff: f64,
+    reranking_coeff: f32,
     query: Query,
 ) -> Vec<QueryResult> {
     let search_request = SearchRequest {
@@ -73,11 +79,13 @@ async fn process_query(
             content_enabled,
             text_search_enabled,
             image_search_enabled: false,
+            reranking_enabled,
             text_search_pages: 1,
             image_search_pages: 1,
             query_coeff: 1.0,
             text_search_coeff,
             image_search_coeff: 1.0,
+            reranking_coeff,
         }),
         path_prefix: None,
         content_type: None,
@@ -107,10 +115,16 @@ async fn process_query(
         .json()
         .await
         .expect_or_log("Error parsing response");
-    assert_eq!(
-        search_response.results.len(),
-        MAX_RANK,
-        "Search must return exactly {} results",
+    if search_response.results.len() < MAX_RANK {
+        tracing::warn!(
+            "Search returned {} results instead of {}",
+            search_response.results.len(),
+            MAX_RANK
+        );
+    }
+    assert!(
+        search_response.results.len() <= MAX_RANK,
+        "Search must return no more than {} results",
         MAX_RANK
     );
 
@@ -140,7 +154,9 @@ async fn process_query(
 pub async fn benchmark(
     content_enabled: bool,
     text_search_enabled: bool,
+    reranking_enabled: bool,
     text_search_coeff: f64,
+    reranking_coeff: f32,
     queries_path: PathBuf,
     result_path: PathBuf,
     indexer_address: Url,
@@ -172,7 +188,9 @@ pub async fn benchmark(
             search_url.clone(),
             content_enabled,
             text_search_enabled,
+            reranking_enabled,
             text_search_coeff,
+            reranking_coeff,
             query,
         )
         .await
