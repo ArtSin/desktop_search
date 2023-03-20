@@ -71,8 +71,6 @@ pub async fn get_image_search_text_embedding(
 }
 
 pub async fn get_text_search_embedding(
-    max_sentences: u32,
-    sentences_per_paragraph: u32,
     reqwest_client: &reqwest_middleware::ClientWithMiddleware,
     mut nnserver_url: Url,
     batch_request: BatchRequest,
@@ -84,8 +82,6 @@ pub async fn get_text_search_embedding(
     let embedding = req_builder
         .json(&json!({
             "text": text,
-            "max_sentences": max_sentences,
-            "sentences_per_paragraph": sentences_per_paragraph,
             "summary_enabled": summary_enabled,
         }))
         .send()

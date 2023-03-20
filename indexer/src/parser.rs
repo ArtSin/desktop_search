@@ -71,7 +71,7 @@ async fn get_metadata_and_bytes(
         return Ok((Metadata::default(), Vec::new()));
     }
 
-    let mut tika_meta_url = state.settings.read().await.other.tika_url.clone();
+    let mut tika_meta_url = state.settings.read().await.tika_url.clone();
     tika_meta_url.set_path("rmeta/text");
     let req_builder = state.reqwest_client.put(tika_meta_url);
     let file = tokio::fs::read(&file.path).await?;

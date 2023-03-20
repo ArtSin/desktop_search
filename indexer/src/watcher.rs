@@ -16,7 +16,7 @@ pub async fn start_watcher(state: Arc<ServerState>) {
         tracing::info!("Stopping watcher");
         debouncer.stop_nonblocking();
     }
-    if !state.settings.read().await.other.watcher_enabled {
+    if !state.settings.read().await.watcher_enabled {
         return;
     }
     tracing::info!("Starting watcher");
@@ -26,7 +26,7 @@ pub async fn start_watcher(state: Arc<ServerState>) {
     tokio::spawn(async { event_handler(tmp, rx).await });
 
     let mut debouncer = new_debouncer(
-        Duration::from_secs_f32(state.settings.read().await.other.debouncer_timeout),
+        Duration::from_secs_f32(state.settings.read().await.debouncer_timeout),
         None,
         move |e| {
             tx.send(e).unwrap_or_log();
@@ -35,8 +35,8 @@ pub async fn start_watcher(state: Arc<ServerState>) {
     .expect_or_log("Can't start file system watcher");
 
     for path in process_indexable_files(
-        &state.settings.read().await.other,
-        &state.settings.read().await.other.indexing_directories,
+        &*state.settings.read().await,
+        &state.settings.read().await.indexing_directories,
         |_, path| Some(path),
         true,
         false,
@@ -76,7 +76,7 @@ async fn event_handler(
                             let mut tmp = state_tmp.watcher_debouncer.write().await;
                             let debouncer = tmp.as_mut().unwrap_or_log();
                             for path in process_indexable_files(
-                                &state_tmp.settings.read().await.other,
+                                &*state_tmp.settings.read().await,
                                 &x.iter()
                                     .map(|path| IndexingDirectory {
                                         path: path.to_path_buf(),

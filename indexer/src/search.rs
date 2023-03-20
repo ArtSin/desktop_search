@@ -327,8 +327,6 @@ fn get_es_request_must(search_request: &SearchRequest) -> Vec<Value> {
 }
 
 async fn get_request_body(
-    max_sentences: u32,
-    sentences_per_paragraph: u32,
     results_per_page: u32,
     reqwest_client: &reqwest_middleware::ClientWithMiddleware,
     nnserver_url: Url,
@@ -355,8 +353,6 @@ async fn get_request_body(
         }) => {
             if text_search_enabled && !query.is_empty() {
                 let text_search_embedding = get_text_search_embedding(
-                    max_sentences,
-                    sentences_per_paragraph,
                     reqwest_client,
                     nnserver_url.clone(),
                     BatchRequest { batched: false },
@@ -740,25 +736,15 @@ pub async fn search(
     State(state): State<Arc<ServerState>>,
     Json(search_request): Json<SearchRequest>,
 ) -> Result<Json<SearchResponse>, (StatusCode, String)> {
-    let (
-        max_sentences,
-        sentences_per_paragraph,
-        nnserver_url,
-        results_per_page,
-        knn_candidates_multiplier,
-    ) = {
+    let (nnserver_url, results_per_page, knn_candidates_multiplier) = {
         let tmp = state.settings.read().await;
         (
-            tmp.other.max_sentences,
-            tmp.other.sentences_per_paragraph,
-            tmp.other.nnserver_url.clone(),
-            tmp.other.results_per_page,
-            tmp.other.knn_candidates_multiplier,
+            tmp.nnserver_url.clone(),
+            tmp.results_per_page,
+            tmp.knn_candidates_multiplier,
         )
     };
     let es_request_body = get_request_body(
-        max_sentences,
-        sentences_per_paragraph,
         results_per_page,
         &state.reqwest_client,
         nnserver_url.clone(),

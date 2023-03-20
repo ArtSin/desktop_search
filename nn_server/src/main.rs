@@ -1,10 +1,10 @@
-use std::{net::SocketAddr, time::Duration};
+use std::{sync::Arc, time::Duration};
 
 use axum::{
     error_handling::HandleErrorLayer, extract::DefaultBodyLimit, http::StatusCode, routing::post,
     BoxError, Router,
 };
-use clap::Parser;
+use common_lib::settings::{NNServerSettings, Settings};
 use ndarray::{Array, ArrayD, Dimension};
 use onnxruntime::{environment::Environment, LoggingLevel};
 use serde::Serialize;
@@ -25,6 +25,7 @@ mod minilm_text;
 mod text_processing;
 
 const PATH_PREFIX: &str = "nn_server/";
+const SETTINGS_FILE_PATH: &str = "Settings.toml";
 
 #[derive(Debug, Clone, Serialize)]
 pub struct Embedding {
@@ -46,17 +47,8 @@ impl Embedding {
     }
 }
 
-#[derive(Debug, Parser)]
-#[command(author, version, about, long_about = None)]
-struct Args {
-    #[arg(long, default_value_t = String::from("127.0.0.1:10000"))]
-    address: String,
-}
-
 #[tokio::main]
 async fn main() {
-    let args = Args::parse();
-
     tracing_subscriber::registry()
         .with(tracing_subscriber::fmt::layer())
         .with(
@@ -66,15 +58,32 @@ async fn main() {
         )
         .init();
 
-    let address: SocketAddr = args.address.parse().expect_or_log("Can't parse address");
+    let settings = match tokio::fs::read_to_string(SETTINGS_FILE_PATH).await {
+        Ok(s) => toml::from_str::<Settings>(&s).expect_or_log("Error reading settings"),
+        Err(e) => {
+            tracing::warn!("Error reading settings file: {}, using defaults", e);
+            Default::default()
+        }
+    }
+    .nn_server;
+    let address = settings.nnserver_address;
 
-    initialize_models().expect_or_log("Can't initialize models");
+    initialize_models(&settings).expect_or_log("Can't initialize models");
 
-    let app = Router::new()
-        .route("/clip/image", post(clip_image::process_request))
-        .route("/clip/text", post(clip_text::process_request))
-        .route("/minilm/text", post(minilm_text::process_request))
-        .route("/minilm/rerank", post(minilm_rerank::process_request))
+    let mut app = Router::new();
+    if settings.image_search_enabled {
+        app = app
+            .route("/clip/image", post(clip_image::process_request))
+            .route("/clip/text", post(clip_text::process_request));
+    }
+    if settings.text_search_enabled {
+        app = app.route("/minilm/text", post(minilm_text::process_request));
+    }
+    if settings.reranking_enabled {
+        app = app.route("/minilm/rerank", post(minilm_rerank::process_request));
+    }
+    let app = app
+        .with_state(Arc::new(settings))
         .layer(DefaultBodyLimit::max(100 * 1024 * 1024))
         .layer(
             ServiceBuilder::new()
@@ -101,15 +110,21 @@ async fn main() {
         .unwrap_or_log();
 }
 
-fn initialize_models() -> anyhow::Result<()> {
+fn initialize_models(settings: &NNServerSettings) -> anyhow::Result<()> {
     let environment = Environment::builder()
         .with_name("nn_server_env")
         .with_log_level(LoggingLevel::Warning)
         .build()?;
-    clip_image::initialize_model(&environment)?;
-    clip_text::initialize_model(&environment)?;
-    minilm_text::initialize_model(&environment)?;
-    minilm_rerank::initialize_model(&environment)?;
+    if settings.image_search_enabled {
+        clip_image::initialize_model(&environment)?;
+        clip_text::initialize_model(&environment)?;
+    }
+    if settings.text_search_enabled {
+        minilm_text::initialize_model(&environment)?;
+    }
+    if settings.reranking_enabled {
+        minilm_rerank::initialize_model(&environment)?;
+    }
     Ok(())
 }
 

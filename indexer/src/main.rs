@@ -1,6 +1,6 @@
 #![recursion_limit = "256"]
 
-use std::{net::SocketAddr, sync::Arc, time::Duration};
+use std::{sync::Arc, time::Duration};
 
 use axum::{
     error_handling::HandleErrorLayer,
@@ -8,7 +8,10 @@ use axum::{
     routing::{get, post},
     BoxError, Router,
 };
-use common_lib::indexer::{IndexingEvent, IndexingStatus};
+use common_lib::{
+    indexer::{IndexingEvent, IndexingStatus},
+    settings::Settings,
+};
 use elasticsearch::{http::transport::Transport, Elasticsearch};
 use notify::RecommendedWatcher;
 use notify_debouncer_mini::Debouncer;
@@ -25,9 +28,7 @@ use tracing_subscriber::{
 use tracing_unwrap::ResultExt;
 
 use crate::{
-    indexer::create_index::create_index,
-    settings::{read_settings_file, InternalSettings},
-    watcher::start_watcher,
+    indexer::create_index::create_index, settings::read_settings_file, watcher::start_watcher,
 };
 
 mod actions;
@@ -42,7 +43,7 @@ mod thumbnails;
 mod watcher;
 
 pub struct ServerState {
-    settings: RwLock<InternalSettings>,
+    settings: RwLock<Settings>,
     es_client: Elasticsearch,
     reqwest_client: reqwest_middleware::ClientWithMiddleware,
     indexing_status: RwLock<IndexingStatus>,
@@ -63,20 +64,16 @@ async fn main() {
 
     let settings = read_settings_file().await;
 
-    let address: SocketAddr = settings
-        .address
-        .parse()
-        .expect_or_log("Can't parse address");
-
-    let es_transport = Transport::single_node(settings.other.elasticsearch_url.as_str())
+    let es_transport = Transport::single_node(settings.elasticsearch_url.as_str())
         .expect_or_log("Can't create connection to Elasticsearch");
     let es_client = Elasticsearch::new(es_transport);
     create_index(&es_client)
         .await
         .expect_or_log("Can't create Elasticsearch index");
 
-    let open_on_start = settings.other.open_on_start;
-    let indexing_events_channel_capacity = 2 * settings.other.max_concurrent_files;
+    let address = settings.indexer_address;
+    let open_on_start = settings.open_on_start;
+    let indexing_events_channel_capacity = 2 * settings.max_concurrent_files;
 
     let retry_policy = ExponentialBackoff::builder().build_with_max_retries(3);
     let reqwest_client = reqwest_middleware::ClientBuilder::new(

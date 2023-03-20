@@ -88,9 +88,9 @@ impl Parser for ImageParser {
             file.path.display()
         );
 
-        let image_search_enabled = state.settings.read().await.other.image_search_enabled;
+        let image_search_enabled = state.settings.read().await.nn_server.image_search_enabled;
         let embedding = if image_search_enabled {
-            let nnserver_url = state.settings.read().await.other.nnserver_url.clone();
+            let nnserver_url = state.settings.read().await.nnserver_url.clone();
             if metadata.content_type.starts_with("image") {
                 get_image_search_image_embedding_generic(
                     &state.reqwest_client,

@@ -33,19 +33,10 @@ impl Parser for TextParser {
             file.path.display()
         );
 
-        let text_search_enabled = state.settings.read().await.other.text_search_enabled;
+        let text_search_enabled = state.settings.read().await.nn_server.text_search_enabled;
         if text_search_enabled {
-            let (max_sentences, sentences_per_paragraph, nnserver_url) = {
-                let tmp = state.settings.read().await;
-                (
-                    tmp.other.max_sentences,
-                    tmp.other.sentences_per_paragraph,
-                    tmp.other.nnserver_url.clone(),
-                )
-            };
+            let nnserver_url = state.settings.read().await.nnserver_url.clone();
             let embedding = get_text_search_embedding(
-                max_sentences,
-                sentences_per_paragraph,
                 &state.reqwest_client,
                 nnserver_url,
                 BatchRequest { batched: true },

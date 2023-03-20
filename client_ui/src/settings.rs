@@ -1,4 +1,6 @@
-use common_lib::settings::Settings;
+use std::net::SocketAddr;
+
+use common_lib::settings::{NNServerSettings, Settings};
 use sycamore::{futures::spawn_local_scoped, prelude::*};
 use url::Url;
 use wasm_bindgen::JsValue;
@@ -19,16 +21,19 @@ const MAX_CONCURRENT_FILES_MIN: usize = 1;
 const MAX_CONCURRENT_FILES_MAX: usize = 256;
 const ELASTICSEARCH_BATCH_SIZE_MIN: usize = 1;
 const ELASTICSEARCH_BATCH_SIZE_MAX: usize = 1000;
-const MAX_SENTENCES_MIN: u32 = 1;
-const MAX_SENTENCES_MAX: u32 = 1000;
-const SENTENCES_PER_PARAGRAPH_MIN: u32 = 1;
-const SENTENCES_PER_PARAGRAPH_MAX: u32 = 100;
 const RESULTS_PER_PAGE_MIN: u32 = 1;
 const RESULTS_PER_PAGE_MAX: u32 = 1000;
 const KNN_CANDIDATES_MULTIPLIER_MIN: u32 = 1;
 const KNN_CANDIDATES_MULTIPLIER_MAX: u32 = 100;
+const MAX_SENTENCES_MIN: u32 = 1;
+const MAX_SENTENCES_MAX: u32 = 1000;
+const WINDOW_SIZE_MIN: u32 = 10;
+const WINDOW_SIZE_MAX: u32 = 200;
+const WINDOW_STEP_MIN: u32 = 1;
+const WINDOW_STEP_MAX: u32 = 200;
 
 trait SettingsUi {
+    fn get_indexer_address_str(&self) -> String;
     fn get_elasticsearch_url_str(&self) -> String;
     fn get_tika_url_str(&self) -> String;
     fn get_nnserver_url_str(&self) -> String;
@@ -40,13 +45,17 @@ trait SettingsUi {
     fn get_max_file_size_str(&self) -> String;
     fn get_max_concurrent_files_str(&self) -> String;
     fn get_elasticsearch_batch_size_str(&self) -> String;
-    fn get_text_search_enabled(&self) -> bool;
-    fn get_image_search_enabled(&self) -> bool;
-    fn get_max_sentences_str(&self) -> String;
-    fn get_sentences_per_paragraph_str(&self) -> String;
     fn get_results_per_page_str(&self) -> String;
     fn get_knn_candidates_multiplier_str(&self) -> String;
+    fn get_nnserver_address_str(&self) -> String;
+    fn get_text_search_enabled(&self) -> bool;
+    fn get_image_search_enabled(&self) -> bool;
+    fn get_reranking_enabled(&self) -> bool;
+    fn get_max_sentences_str(&self) -> String;
+    fn get_window_size_str(&self) -> String;
+    fn get_window_step_str(&self) -> String;
 
+    fn valid_indexer_address(indexer_address_str: &str) -> bool;
     fn valid_elasticsearch_url(elasticsearch_url_str: &str) -> bool;
     fn valid_tika_url(tika_url_str: &str) -> bool;
     fn valid_nnserver_url(nnserver_url_str: &str) -> bool;
@@ -54,13 +63,16 @@ trait SettingsUi {
     fn valid_max_file_size(max_file_size_str: &str) -> bool;
     fn valid_max_concurrent_files(max_concurrent_files_str: &str) -> bool;
     fn valid_elasticsearch_batch_size(elasticsearch_batch_size_str: &str) -> bool;
-    fn valid_max_sentences(max_sentences_str: &str) -> bool;
-    fn valid_sentences_per_paragraph(sentences_per_paragraph_str: &str) -> bool;
     fn valid_results_per_page(results_per_page_str: &str) -> bool;
     fn valid_knn_candidates_multiplier(knn_candidates_multiplier_str: &str) -> bool;
+    fn valid_nnserver_address(nnserver_address_str: &str) -> bool;
+    fn valid_max_sentences(max_sentences_str: &str) -> bool;
+    fn valid_window_size(window_size_str: &str) -> bool;
+    fn valid_window_step(window_step_str: &str) -> bool;
 
     #[allow(clippy::too_many_arguments)]
     fn parse(
+        indexer_address_str: &str,
         elasticsearch_url_str: &str,
         tika_url_str: &str,
         nnserver_url_str: &str,
@@ -72,16 +84,22 @@ trait SettingsUi {
         max_file_size_str: &str,
         max_concurrent_files_str: &str,
         elasticsearch_batch_size_str: &str,
-        text_search_enabled: bool,
-        image_search_enabled: bool,
-        max_sentences_str: &str,
-        sentences_per_paragraph_str: &str,
         results_per_page_str: &str,
         knn_candidates_multiplier_str: &str,
+        nnserver_address_str: &str,
+        text_search_enabled: bool,
+        image_search_enabled: bool,
+        reranking_enabled: bool,
+        max_sentences_str: &str,
+        window_size_str: &str,
+        window_step_str: &str,
     ) -> Self;
 }
 
 impl SettingsUi for Settings {
+    fn get_indexer_address_str(&self) -> String {
+        self.indexer_address.to_string()
+    }
     fn get_elasticsearch_url_str(&self) -> String {
         self.elasticsearch_url.to_string()
     }
@@ -118,25 +136,37 @@ impl SettingsUi for Settings {
     fn get_elasticsearch_batch_size_str(&self) -> String {
         self.elasticsearch_batch_size.to_string()
     }
-    fn get_text_search_enabled(&self) -> bool {
-        self.text_search_enabled
-    }
-    fn get_image_search_enabled(&self) -> bool {
-        self.image_search_enabled
-    }
-    fn get_max_sentences_str(&self) -> String {
-        self.max_sentences.to_string()
-    }
-    fn get_sentences_per_paragraph_str(&self) -> String {
-        self.sentences_per_paragraph.to_string()
-    }
     fn get_results_per_page_str(&self) -> String {
         self.results_per_page.to_string()
     }
     fn get_knn_candidates_multiplier_str(&self) -> String {
         self.knn_candidates_multiplier.to_string()
     }
+    fn get_nnserver_address_str(&self) -> String {
+        self.nn_server.nnserver_address.to_string()
+    }
+    fn get_text_search_enabled(&self) -> bool {
+        self.nn_server.text_search_enabled
+    }
+    fn get_image_search_enabled(&self) -> bool {
+        self.nn_server.image_search_enabled
+    }
+    fn get_reranking_enabled(&self) -> bool {
+        self.nn_server.reranking_enabled
+    }
+    fn get_max_sentences_str(&self) -> String {
+        self.nn_server.max_sentences.to_string()
+    }
+    fn get_window_size_str(&self) -> String {
+        self.nn_server.window_size.to_string()
+    }
+    fn get_window_step_str(&self) -> String {
+        self.nn_server.window_step.to_string()
+    }
 
+    fn valid_indexer_address(indexer_address_str: &str) -> bool {
+        indexer_address_str.parse::<SocketAddr>().is_ok()
+    }
     fn valid_elasticsearch_url(elasticsearch_url_str: &str) -> bool {
         Url::parse(elasticsearch_url_str).is_ok()
     }
@@ -169,18 +199,6 @@ impl SettingsUi for Settings {
             (ELASTICSEARCH_BATCH_SIZE_MIN..=ELASTICSEARCH_BATCH_SIZE_MAX).contains(&x)
         }) == Ok(true)
     }
-    fn valid_max_sentences(max_sentences_str: &str) -> bool {
-        max_sentences_str
-            .parse()
-            .map(|x: u32| (MAX_SENTENCES_MIN..=MAX_SENTENCES_MAX).contains(&x))
-            == Ok(true)
-    }
-    fn valid_sentences_per_paragraph(sentences_per_paragraph_str: &str) -> bool {
-        sentences_per_paragraph_str
-            .parse()
-            .map(|x: u32| (SENTENCES_PER_PARAGRAPH_MIN..=SENTENCES_PER_PARAGRAPH_MAX).contains(&x))
-            == Ok(true)
-    }
     fn valid_results_per_page(results_per_page_str: &str) -> bool {
         results_per_page_str
             .parse()
@@ -192,8 +210,30 @@ impl SettingsUi for Settings {
             (KNN_CANDIDATES_MULTIPLIER_MIN..=KNN_CANDIDATES_MULTIPLIER_MAX).contains(&x)
         }) == Ok(true)
     }
+    fn valid_nnserver_address(nnserver_address_str: &str) -> bool {
+        nnserver_address_str.parse::<SocketAddr>().is_ok()
+    }
+    fn valid_max_sentences(max_sentences_str: &str) -> bool {
+        max_sentences_str
+            .parse()
+            .map(|x: u32| (MAX_SENTENCES_MIN..=MAX_SENTENCES_MAX).contains(&x))
+            == Ok(true)
+    }
+    fn valid_window_size(window_size_str: &str) -> bool {
+        window_size_str
+            .parse()
+            .map(|x: u32| (WINDOW_SIZE_MIN..=WINDOW_SIZE_MAX).contains(&x))
+            == Ok(true)
+    }
+    fn valid_window_step(window_step_str: &str) -> bool {
+        window_step_str
+            .parse()
+            .map(|x: u32| (WINDOW_STEP_MIN..=WINDOW_STEP_MAX).contains(&x))
+            == Ok(true)
+    }
 
     fn parse(
+        indexer_address_str: &str,
         elasticsearch_url_str: &str,
         tika_url_str: &str,
         nnserver_url_str: &str,
@@ -205,14 +245,18 @@ impl SettingsUi for Settings {
         max_file_size_str: &str,
         max_concurrent_files_str: &str,
         elasticsearch_batch_size_str: &str,
-        text_search_enabled: bool,
-        image_search_enabled: bool,
-        max_sentences_str: &str,
-        sentences_per_paragraph_str: &str,
         results_per_page_str: &str,
         knn_candidates_multiplier_str: &str,
+        nnserver_address_str: &str,
+        text_search_enabled: bool,
+        image_search_enabled: bool,
+        reranking_enabled: bool,
+        max_sentences_str: &str,
+        window_size_str: &str,
+        window_step_str: &str,
     ) -> Self {
         Self {
+            indexer_address: indexer_address_str.parse().unwrap(),
             elasticsearch_url: Url::parse(elasticsearch_url_str).unwrap(),
             tika_url: Url::parse(tika_url_str).unwrap(),
             nnserver_url: Url::parse(nnserver_url_str).unwrap(),
@@ -227,12 +271,17 @@ impl SettingsUi for Settings {
             max_file_size: (max_file_size_str.parse::<f64>().unwrap() * 1024.0 * 1024.0) as u64,
             max_concurrent_files: max_concurrent_files_str.parse().unwrap(),
             elasticsearch_batch_size: elasticsearch_batch_size_str.parse().unwrap(),
-            text_search_enabled,
-            image_search_enabled,
-            max_sentences: max_sentences_str.parse().unwrap(),
-            sentences_per_paragraph: sentences_per_paragraph_str.parse().unwrap(),
             results_per_page: results_per_page_str.parse().unwrap(),
             knn_candidates_multiplier: knn_candidates_multiplier_str.parse().unwrap(),
+            nn_server: NNServerSettings {
+                nnserver_address: nnserver_address_str.parse().unwrap(),
+                text_search_enabled,
+                image_search_enabled,
+                reranking_enabled,
+                max_sentences: max_sentences_str.parse().unwrap(),
+                window_size: window_size_str.parse().unwrap(),
+                window_step: window_step_str.parse().unwrap(),
+            },
         }
     }
 }
@@ -252,6 +301,7 @@ pub fn Settings<'a, G: Html>(
     status_dialog_state: &'a Signal<StatusDialogState>,
 ) -> View<G> {
     // Input values for settings
+    let indexer_address_str = create_signal(cx, settings.get().get_indexer_address_str());
     let elasticsearch_url_str = create_signal(cx, settings.get().get_elasticsearch_url_str());
     let tika_url_str = create_signal(cx, settings.get().get_tika_url_str());
     let nnserver_url_str = create_signal(cx, settings.get().get_nnserver_url_str());
@@ -265,16 +315,21 @@ pub fn Settings<'a, G: Html>(
     let max_concurrent_files_str = create_signal(cx, settings.get().get_max_concurrent_files_str());
     let elasticsearch_batch_size_str =
         create_signal(cx, settings.get().get_elasticsearch_batch_size_str());
-    let text_search_enabled = create_signal(cx, settings.get().get_text_search_enabled());
-    let image_search_enabled = create_signal(cx, settings.get().get_image_search_enabled());
-    let max_sentences_str = create_signal(cx, settings.get().get_max_sentences_str());
-    let sentences_per_paragraph_str =
-        create_signal(cx, settings.get().get_sentences_per_paragraph_str());
     let results_per_page_str = create_signal(cx, settings.get().get_results_per_page_str());
     let knn_candidates_multiplier_str =
         create_signal(cx, settings.get().get_knn_candidates_multiplier_str());
+    let nnserver_address_str = create_signal(cx, settings.get().get_nnserver_address_str());
+    let text_search_enabled = create_signal(cx, settings.get().get_text_search_enabled());
+    let image_search_enabled = create_signal(cx, settings.get().get_image_search_enabled());
+    let reranking_enabled = create_signal(cx, settings.get().get_reranking_enabled());
+    let max_sentences_str = create_signal(cx, settings.get().get_max_sentences_str());
+    let window_size_str = create_signal(cx, settings.get().get_window_size_str());
+    let window_step_str = create_signal(cx, settings.get().get_window_step_str());
 
     // Validation values for settings
+    let indexer_address_valid = create_memo(cx, || {
+        Settings::valid_indexer_address(&indexer_address_str.get())
+    });
     let elasticsearch_url_valid = create_memo(cx, || {
         Settings::valid_elasticsearch_url(&elasticsearch_url_str.get())
     });
@@ -293,34 +348,40 @@ pub fn Settings<'a, G: Html>(
     let elasticsearch_batch_size_valid = create_memo(cx, || {
         Settings::valid_elasticsearch_batch_size(&elasticsearch_batch_size_str.get())
     });
-    let max_sentences_valid = create_memo(cx, || {
-        Settings::valid_max_sentences(&max_sentences_str.get())
-    });
-    let sentences_per_paragraph_valid = create_memo(cx, || {
-        Settings::valid_sentences_per_paragraph(&sentences_per_paragraph_str.get())
-    });
     let results_per_page_valid = create_memo(cx, || {
         Settings::valid_results_per_page(&results_per_page_str.get())
     });
     let knn_candidates_multiplier_valid = create_memo(cx, || {
         Settings::valid_knn_candidates_multiplier(&knn_candidates_multiplier_str.get())
     });
+    let nnserver_address_valid = create_memo(cx, || {
+        Settings::valid_nnserver_address(&nnserver_address_str.get())
+    });
+    let max_sentences_valid = create_memo(cx, || {
+        Settings::valid_max_sentences(&max_sentences_str.get())
+    });
+    let window_size_valid = create_memo(cx, || Settings::valid_window_size(&window_size_str.get()));
+    let window_step_valid = create_memo(cx, || Settings::valid_window_step(&window_step_str.get()));
     let any_invalid = create_memo(cx, || {
-        !*elasticsearch_url_valid.get()
+        !*indexer_address_valid.get()
+            || !*elasticsearch_url_valid.get()
             || !*tika_url_valid.get()
             || !*nnserver_url_valid.get()
             || !*debouncer_timeout_valid.get()
             || !*max_file_size_valid.get()
             || !*max_concurrent_files_valid.get()
             || !*elasticsearch_batch_size_valid.get()
-            || !*max_sentences_valid.get()
-            || !*sentences_per_paragraph_valid.get()
             || !*results_per_page_valid.get()
             || !*knn_candidates_multiplier_valid.get()
+            || !*nnserver_address_valid.get()
+            || !*max_sentences_valid.get()
+            || !*window_size_valid.get()
+            || !*window_step_valid.get()
     });
 
     // Set input values from settings when they are updated (on load from server or reset)
     create_effect(cx, || {
+        indexer_address_str.set(settings.get().get_indexer_address_str());
         elasticsearch_url_str.set(settings.get().get_elasticsearch_url_str());
         tika_url_str.set(settings.get().get_tika_url_str());
         nnserver_url_str.set(settings.get().get_nnserver_url_str());
@@ -332,12 +393,15 @@ pub fn Settings<'a, G: Html>(
         max_file_size_str.set(settings.get().get_max_file_size_str());
         max_concurrent_files_str.set(settings.get().get_max_concurrent_files_str());
         elasticsearch_batch_size_str.set(settings.get().get_elasticsearch_batch_size_str());
-        text_search_enabled.set(settings.get().get_text_search_enabled());
-        image_search_enabled.set(settings.get().get_image_search_enabled());
-        max_sentences_str.set(settings.get().get_max_sentences_str());
-        sentences_per_paragraph_str.set(settings.get().get_sentences_per_paragraph_str());
         results_per_page_str.set(settings.get().get_results_per_page_str());
         knn_candidates_multiplier_str.set(settings.get().get_knn_candidates_multiplier_str());
+        nnserver_address_str.set(settings.get().get_nnserver_address_str());
+        text_search_enabled.set(settings.get().get_text_search_enabled());
+        image_search_enabled.set(settings.get().get_image_search_enabled());
+        reranking_enabled.set(settings.get().get_reranking_enabled());
+        max_sentences_str.set(settings.get().get_max_sentences_str());
+        window_size_str.set(settings.get().get_window_size_str());
+        window_step_str.set(settings.get().get_window_step_str());
     });
     let reset_settings = |_| {
         settings.trigger_subscribers();
@@ -366,6 +430,7 @@ pub fn Settings<'a, G: Html>(
             status_dialog_state.set(StatusDialogState::Loading);
 
             let new_settings = Settings::parse(
+                &indexer_address_str.get(),
                 &elasticsearch_url_str.get(),
                 &tika_url_str.get(),
                 &nnserver_url_str.get(),
@@ -377,12 +442,15 @@ pub fn Settings<'a, G: Html>(
                 &max_file_size_str.get(),
                 &max_concurrent_files_str.get(),
                 &elasticsearch_batch_size_str.get(),
-                *text_search_enabled.get(),
-                *image_search_enabled.get(),
-                &max_sentences_str.get(),
-                &sentences_per_paragraph_str.get(),
                 &results_per_page_str.get(),
                 &knn_candidates_multiplier_str.get(),
+                &nnserver_address_str.get(),
+                *text_search_enabled.get(),
+                *image_search_enabled.get(),
+                *reranking_enabled.get(),
+                &max_sentences_str.get(),
+                &window_size_str.get(),
+                &window_step_str.get(),
             );
 
             if let Err(e) = put_settings(&new_settings).await {
@@ -403,6 +471,8 @@ pub fn Settings<'a, G: Html>(
                 form(id="settings", on:submit=set_settings, action="javascript:void(0);") {
                     fieldset {
                         legend { "Серверные настройки" }
+                        TextSetting(id="indexer_address", label="Адрес сервера индексации: ",
+                            value=indexer_address_str, valid=indexer_address_valid)
                         TextSetting(id="elasticsearch_url", label="URL сервера Elasticsearch: ",
                             value=elasticsearch_url_str, valid=elasticsearch_url_valid)
                         TextSetting(id="tika_url", label="URL сервера Apache Tika: ",
@@ -433,14 +503,6 @@ pub fn Settings<'a, G: Html>(
                             value=max_concurrent_files_str, valid=max_concurrent_files_valid)
                         NumberSetting(id="elasticsearch_batch_size", label="Количество отправляемых в Elasticsearch изменений за раз: ",
                             value=elasticsearch_batch_size_str, valid=elasticsearch_batch_size_valid)
-                        CheckboxSetting(id="text_search_enabled", label="Семантический поиск по тексту: ",
-                            value=text_search_enabled)
-                        CheckboxSetting(id="image_search_enabled", label="Семантический поиск по изображениям: ",
-                            value=image_search_enabled)
-                        NumberSetting(id="max_sentences", label="Максимальное количество предложений, обрабатываемых нейронной сетью: ",
-                            value=max_sentences_str, valid=max_sentences_valid)
-                        NumberSetting(id="sentences_per_paragraph", label="Количество предложений, обрабатываемых за один раз: ",
-                            value=sentences_per_paragraph_str, valid=sentences_per_paragraph_valid)
                     }
 
                     fieldset {
@@ -449,6 +511,24 @@ pub fn Settings<'a, G: Html>(
                             value=results_per_page_str, valid=results_per_page_valid)
                         NumberSetting(id="knn_candidates_multiplier", label="Множитель количества кандидатов kNN при семантическом поиске: ",
                             value=knn_candidates_multiplier_str, valid=knn_candidates_multiplier_valid)
+                    }
+
+                    fieldset {
+                        legend { "Настройки сервера нейронных сетей" }
+                        TextSetting(id="nnserver_address", label="Адрес сервера нейронных сетей: ",
+                            value=nnserver_address_str, valid=nnserver_address_valid)
+                        CheckboxSetting(id="text_search_enabled", label="Семантический поиск по тексту: ",
+                            value=text_search_enabled)
+                        CheckboxSetting(id="image_search_enabled", label="Семантический поиск по изображениям: ",
+                            value=image_search_enabled)
+                        CheckboxSetting(id="reranking_enabled", label="Переранжирование: ",
+                            value=reranking_enabled)
+                        NumberSetting(id="max_sentences", label="Максимальное количество обрабатываемых предложений: ",
+                            value=max_sentences_str, valid=max_sentences_valid)
+                        NumberSetting(id="window_size", label="Размер окна слов: ",
+                            value=window_size_str, valid=window_size_valid)
+                        NumberSetting(id="window_step", label="Шаг окна слов: ",
+                            value=window_step_str, valid=window_step_valid)
                     }
 
                     div(class="settings_buttons") {

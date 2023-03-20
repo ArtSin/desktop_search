@@ -65,7 +65,7 @@ async fn streaming_process<T, F, Fut>(
     Fut: Future<Output = anyhow::Result<(Value, Value)>> + Send,
 {
     let semaphore = Arc::new(Semaphore::new(
-        state.settings.read().await.other.max_concurrent_files,
+        state.settings.read().await.max_concurrent_files,
     ));
     let mut futures = Vec::new();
     for file in files {
@@ -154,7 +154,7 @@ async fn bulk_send(
 
     let mut queue = Vec::new();
     let mut cnt: usize = 0;
-    let batch_size = state.settings.read().await.other.elasticsearch_batch_size;
+    let batch_size = state.settings.read().await.elasticsearch_batch_size;
     while let Some((action, data)) = rx.recv().await {
         queue.push(JsonBody::new(action));
         if !data.is_null() {
@@ -185,11 +185,11 @@ pub async fn indexing_process(state: Arc<ServerState>, paths: Option<Vec<PathBuf
         Some(paths) => {
             let paths_tmp = paths.clone();
             tokio::task::spawn_blocking(move || {
-                get_file_system_partial_files_list(&tmp.settings.blocking_read().other, paths_tmp)
+                get_file_system_partial_files_list(&tmp.settings.blocking_read(), paths_tmp)
             })
         }
         None => tokio::task::spawn_blocking(move || {
-            get_file_system_files_list(&tmp.settings.blocking_read().other)
+            get_file_system_files_list(&tmp.settings.blocking_read())
         }),
     };
 
@@ -229,7 +229,7 @@ pub async fn indexing_process(state: Arc<ServerState>, paths: Option<Vec<PathBuf
 
     // Create channel to bulk send operations to Elasticsearch
     let channel_capacity =
-        CHANNEL_CAPACITY_MULTIPLIER * state.settings.read().await.other.elasticsearch_batch_size;
+        CHANNEL_CAPACITY_MULTIPLIER * state.settings.read().await.elasticsearch_batch_size;
     let (tx, rx) = mpsc::channel(channel_capacity);
     let tmp = Arc::clone(&state);
     let bulk_send_f = tokio::spawn(async move { bulk_send(tmp, rx).await });

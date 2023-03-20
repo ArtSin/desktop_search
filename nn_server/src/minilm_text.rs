@@ -1,7 +1,11 @@
-use std::time::Duration;
+use std::{sync::Arc, time::Duration};
 
-use axum::{extract::Query, http::StatusCode, Json};
-use common_lib::BatchRequest;
+use axum::{
+    extract::{Query, State},
+    http::StatusCode,
+    Json,
+};
+use common_lib::{settings::NNServerSettings, BatchRequest};
 use ndarray::{ArrayD, Axis};
 use once_cell::sync::OnceCell;
 use onnxruntime::{environment::Environment, session::Session, GraphOptimizationLevel};
@@ -29,7 +33,6 @@ static BATCH_SENDER: OnceCell<mpsc::Sender<Command<String, ArrayD<f32>>>> = Once
 #[derive(Debug, Clone, Deserialize)]
 pub struct MiniLMTextRequest {
     text: String,
-    max_sentences: u32,
     summary_enabled: bool,
 }
 
@@ -97,16 +100,20 @@ fn compute_embeddings(paragraphs: Vec<String>) -> anyhow::Result<Vec<ArrayD<f32>
 }
 
 pub async fn process_request(
+    State(settings): State<Arc<NNServerSettings>>,
     Query(batch_query): Query<BatchRequest>,
     Json(request): Json<MiniLMTextRequest>,
 ) -> Result<Json<SummaryEmbedding>, (StatusCode, String)> {
-    const WINDOW_STEP: usize = 75;
-    const WINDOW_SIZE: usize = 100;
+    let (max_sentences, window_size, window_step) = (
+        settings.max_sentences as usize,
+        settings.window_size as usize,
+        settings.window_step as usize,
+    );
     let words: Vec<_> = request.text.split_whitespace().collect();
     let paragraphs: Vec<_> = (0..words.len())
-        .step_by(WINDOW_STEP)
-        .take(request.max_sentences as usize)
-        .map(|i| words[i..(i + WINDOW_SIZE).min(words.len())].join(" "))
+        .step_by(window_step)
+        .take(max_sentences)
+        .map(|i| words[i..(i + window_size).min(words.len())].join(" "))
         .collect();
 
     // Spawn tasks for each paragraph
