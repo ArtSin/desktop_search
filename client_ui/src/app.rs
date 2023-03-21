@@ -77,7 +77,7 @@ pub fn App<G: Html>(cx: Scope) -> View<G> {
         }
 
         div(style={if *curr_tab.get().as_ref() == AppTabs::Search { "display: block;" } else { "display: none;" }}) {
-            Search(status_dialog_state=status_dialog_state)
+            Search(settings=settings, status_dialog_state=status_dialog_state)
         }
         div(style={if *curr_tab.get().as_ref() == AppTabs::Status { "display: block;" } else { "display: none;" }}) {
             Status(status_dialog_state=status_dialog_state)

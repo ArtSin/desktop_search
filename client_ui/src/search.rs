@@ -3,6 +3,7 @@ use std::path::{Path, PathBuf};
 use common_lib::{
     actions::PickFileResult,
     search::{ImageQuery, PageType, SearchRequest, SearchResponse, TextQuery},
+    settings::Settings,
 };
 use gloo_net::http::Request;
 use sycamore::{futures::spawn_local_scoped, prelude::*};
@@ -66,6 +67,7 @@ async fn search(search_request: &SearchRequest) -> Result<SearchResponse, JsValu
 #[component(inline_props)]
 pub fn Search<'a, G: Html>(
     cx: Scope<'a>,
+    settings: &'a Signal<Settings>,
     status_dialog_state: &'a Signal<StatusDialogState>,
 ) -> View<G> {
     let query = create_signal(cx, String::new());
@@ -73,9 +75,9 @@ pub fn Search<'a, G: Html>(
 
     let query_type = create_signal(cx, QueryType::Text);
     let content_enabled = create_signal(cx, true);
-    let text_search_enabled = create_signal(cx, true);
-    let image_search_enabled = create_signal(cx, true);
-    let reranking_enabled = create_signal(cx, false);
+    let text_search_enabled = create_signal(cx, settings.get().nn_server.text_search_enabled);
+    let image_search_enabled = create_signal(cx, settings.get().nn_server.image_search_enabled);
+    let reranking_enabled = create_signal(cx, settings.get().nn_server.reranking_enabled);
     let text_search_pages = create_signal(cx, 1);
     let image_search_pages = create_signal(cx, 1);
     let query_coeff = create_signal(cx, 1.0);

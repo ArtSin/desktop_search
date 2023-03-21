@@ -66,7 +66,7 @@ async fn main() {
         }
     }
     .nn_server;
-    let address = settings.nnserver_address;
+    let address = settings.nn_server_address;
 
     initialize_models(&settings).expect_or_log("Can't initialize models");
 

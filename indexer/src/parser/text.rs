@@ -35,10 +35,10 @@ impl Parser for TextParser {
 
         let text_search_enabled = state.settings.read().await.nn_server.text_search_enabled;
         if text_search_enabled {
-            let nnserver_url = state.settings.read().await.nnserver_url.clone();
+            let nn_server_url = state.settings.read().await.nn_server_url.clone();
             let embedding = get_text_search_embedding(
                 &state.reqwest_client,
-                nnserver_url,
+                nn_server_url,
                 BatchRequest { batched: true },
                 file.content.as_ref().unwrap_or_log(),
                 true,

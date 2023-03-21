@@ -1,4 +1,4 @@
-use std::net::SocketAddr;
+use std::{net::SocketAddr, str::FromStr};
 
 use common_lib::settings::{NNServerSettings, Settings};
 use sycamore::{futures::spawn_local_scoped, prelude::*};
@@ -33,256 +33,19 @@ const WINDOW_STEP_MIN: u32 = 1;
 const WINDOW_STEP_MAX: u32 = 200;
 
 trait SettingsUi {
-    fn get_indexer_address_str(&self) -> String;
-    fn get_elasticsearch_url_str(&self) -> String;
-    fn get_tika_url_str(&self) -> String;
-    fn get_nnserver_url_str(&self) -> String;
-    fn get_open_on_start(&self) -> bool;
     fn get_indexing_directories_dir_items(&self) -> Vec<DirectoryItem>;
-    fn get_exclude_file_regex(&self) -> String;
-    fn get_watcher_enabled(&self) -> bool;
-    fn get_debouncer_timeout_str(&self) -> String;
-    fn get_max_file_size_str(&self) -> String;
-    fn get_max_concurrent_files_str(&self) -> String;
-    fn get_elasticsearch_batch_size_str(&self) -> String;
-    fn get_results_per_page_str(&self) -> String;
-    fn get_knn_candidates_multiplier_str(&self) -> String;
-    fn get_nnserver_address_str(&self) -> String;
-    fn get_text_search_enabled(&self) -> bool;
-    fn get_image_search_enabled(&self) -> bool;
-    fn get_reranking_enabled(&self) -> bool;
-    fn get_max_sentences_str(&self) -> String;
-    fn get_window_size_str(&self) -> String;
-    fn get_window_step_str(&self) -> String;
-
-    fn valid_indexer_address(indexer_address_str: &str) -> bool;
-    fn valid_elasticsearch_url(elasticsearch_url_str: &str) -> bool;
-    fn valid_tika_url(tika_url_str: &str) -> bool;
-    fn valid_nnserver_url(nnserver_url_str: &str) -> bool;
-    fn valid_debouncer_timeout(debouncer_timeout_str: &str) -> bool;
-    fn valid_max_file_size(max_file_size_str: &str) -> bool;
-    fn valid_max_concurrent_files(max_concurrent_files_str: &str) -> bool;
-    fn valid_elasticsearch_batch_size(elasticsearch_batch_size_str: &str) -> bool;
-    fn valid_results_per_page(results_per_page_str: &str) -> bool;
-    fn valid_knn_candidates_multiplier(knn_candidates_multiplier_str: &str) -> bool;
-    fn valid_nnserver_address(nnserver_address_str: &str) -> bool;
-    fn valid_max_sentences(max_sentences_str: &str) -> bool;
-    fn valid_window_size(window_size_str: &str) -> bool;
-    fn valid_window_step(window_step_str: &str) -> bool;
-
-    #[allow(clippy::too_many_arguments)]
-    fn parse(
-        indexer_address_str: &str,
-        elasticsearch_url_str: &str,
-        tika_url_str: &str,
-        nnserver_url_str: &str,
-        open_on_start: bool,
-        indexing_directories_dir_items: &[DirectoryItem],
-        exclude_file_regex: &str,
-        watcher_enabled: bool,
-        debouncer_timeout_str: &str,
-        max_file_size_str: &str,
-        max_concurrent_files_str: &str,
-        elasticsearch_batch_size_str: &str,
-        results_per_page_str: &str,
-        knn_candidates_multiplier_str: &str,
-        nnserver_address_str: &str,
-        text_search_enabled: bool,
-        image_search_enabled: bool,
-        reranking_enabled: bool,
-        max_sentences_str: &str,
-        window_size_str: &str,
-        window_step_str: &str,
-    ) -> Self;
+    fn get_max_file_size_mib(&self) -> f64;
 }
 
 impl SettingsUi for Settings {
-    fn get_indexer_address_str(&self) -> String {
-        self.indexer_address.to_string()
-    }
-    fn get_elasticsearch_url_str(&self) -> String {
-        self.elasticsearch_url.to_string()
-    }
-    fn get_tika_url_str(&self) -> String {
-        self.tika_url.to_string()
-    }
-    fn get_nnserver_url_str(&self) -> String {
-        self.nnserver_url.to_string()
-    }
-    fn get_open_on_start(&self) -> bool {
-        self.open_on_start
-    }
     fn get_indexing_directories_dir_items(&self) -> Vec<DirectoryItem> {
         self.indexing_directories
             .iter()
             .map(|p| DirectoryItem::new(p.clone()))
             .collect()
     }
-    fn get_exclude_file_regex(&self) -> String {
-        self.exclude_file_regex.clone()
-    }
-    fn get_watcher_enabled(&self) -> bool {
-        self.watcher_enabled
-    }
-    fn get_debouncer_timeout_str(&self) -> String {
-        self.debouncer_timeout.to_string()
-    }
-    fn get_max_file_size_str(&self) -> String {
-        ((self.max_file_size as f64) / 1024.0 / 1024.0).to_string()
-    }
-    fn get_max_concurrent_files_str(&self) -> String {
-        self.max_concurrent_files.to_string()
-    }
-    fn get_elasticsearch_batch_size_str(&self) -> String {
-        self.elasticsearch_batch_size.to_string()
-    }
-    fn get_results_per_page_str(&self) -> String {
-        self.results_per_page.to_string()
-    }
-    fn get_knn_candidates_multiplier_str(&self) -> String {
-        self.knn_candidates_multiplier.to_string()
-    }
-    fn get_nnserver_address_str(&self) -> String {
-        self.nn_server.nnserver_address.to_string()
-    }
-    fn get_text_search_enabled(&self) -> bool {
-        self.nn_server.text_search_enabled
-    }
-    fn get_image_search_enabled(&self) -> bool {
-        self.nn_server.image_search_enabled
-    }
-    fn get_reranking_enabled(&self) -> bool {
-        self.nn_server.reranking_enabled
-    }
-    fn get_max_sentences_str(&self) -> String {
-        self.nn_server.max_sentences.to_string()
-    }
-    fn get_window_size_str(&self) -> String {
-        self.nn_server.window_size.to_string()
-    }
-    fn get_window_step_str(&self) -> String {
-        self.nn_server.window_step.to_string()
-    }
-
-    fn valid_indexer_address(indexer_address_str: &str) -> bool {
-        indexer_address_str.parse::<SocketAddr>().is_ok()
-    }
-    fn valid_elasticsearch_url(elasticsearch_url_str: &str) -> bool {
-        Url::parse(elasticsearch_url_str).is_ok()
-    }
-    fn valid_tika_url(tika_url_str: &str) -> bool {
-        Url::parse(tika_url_str).is_ok()
-    }
-    fn valid_nnserver_url(nnserver_url_str: &str) -> bool {
-        Url::parse(nnserver_url_str).is_ok()
-    }
-    fn valid_debouncer_timeout(debouncer_timeout_str: &str) -> bool {
-        debouncer_timeout_str
-            .parse()
-            .map(|x: f32| (DEBOUNCER_TIMEOUT_MIN..=DEBOUNCER_TIMEOUT_MAX).contains(&x))
-            == Ok(true)
-    }
-    fn valid_max_file_size(max_file_size_str: &str) -> bool {
-        max_file_size_str
-            .parse()
-            .map(|x: f64| (MAX_FILE_SIZE_MIN..=MAX_FILE_SIZE_MAX).contains(&x))
-            == Ok(true)
-    }
-    fn valid_max_concurrent_files(max_concurrent_files_str: &str) -> bool {
-        max_concurrent_files_str
-            .parse()
-            .map(|x: usize| (MAX_CONCURRENT_FILES_MIN..=MAX_CONCURRENT_FILES_MAX).contains(&x))
-            == Ok(true)
-    }
-    fn valid_elasticsearch_batch_size(elasticsearch_batch_size_str: &str) -> bool {
-        elasticsearch_batch_size_str.parse().map(|x: usize| {
-            (ELASTICSEARCH_BATCH_SIZE_MIN..=ELASTICSEARCH_BATCH_SIZE_MAX).contains(&x)
-        }) == Ok(true)
-    }
-    fn valid_results_per_page(results_per_page_str: &str) -> bool {
-        results_per_page_str
-            .parse()
-            .map(|x: u32| (RESULTS_PER_PAGE_MIN..=RESULTS_PER_PAGE_MAX).contains(&x))
-            == Ok(true)
-    }
-    fn valid_knn_candidates_multiplier(knn_candidates_multiplier_str: &str) -> bool {
-        knn_candidates_multiplier_str.parse().map(|x: u32| {
-            (KNN_CANDIDATES_MULTIPLIER_MIN..=KNN_CANDIDATES_MULTIPLIER_MAX).contains(&x)
-        }) == Ok(true)
-    }
-    fn valid_nnserver_address(nnserver_address_str: &str) -> bool {
-        nnserver_address_str.parse::<SocketAddr>().is_ok()
-    }
-    fn valid_max_sentences(max_sentences_str: &str) -> bool {
-        max_sentences_str
-            .parse()
-            .map(|x: u32| (MAX_SENTENCES_MIN..=MAX_SENTENCES_MAX).contains(&x))
-            == Ok(true)
-    }
-    fn valid_window_size(window_size_str: &str) -> bool {
-        window_size_str
-            .parse()
-            .map(|x: u32| (WINDOW_SIZE_MIN..=WINDOW_SIZE_MAX).contains(&x))
-            == Ok(true)
-    }
-    fn valid_window_step(window_step_str: &str) -> bool {
-        window_step_str
-            .parse()
-            .map(|x: u32| (WINDOW_STEP_MIN..=WINDOW_STEP_MAX).contains(&x))
-            == Ok(true)
-    }
-
-    fn parse(
-        indexer_address_str: &str,
-        elasticsearch_url_str: &str,
-        tika_url_str: &str,
-        nnserver_url_str: &str,
-        open_on_start: bool,
-        indexing_directories_dir_items: &[DirectoryItem],
-        exclude_file_regex: &str,
-        watcher_enabled: bool,
-        debouncer_timeout_str: &str,
-        max_file_size_str: &str,
-        max_concurrent_files_str: &str,
-        elasticsearch_batch_size_str: &str,
-        results_per_page_str: &str,
-        knn_candidates_multiplier_str: &str,
-        nnserver_address_str: &str,
-        text_search_enabled: bool,
-        image_search_enabled: bool,
-        reranking_enabled: bool,
-        max_sentences_str: &str,
-        window_size_str: &str,
-        window_step_str: &str,
-    ) -> Self {
-        Self {
-            indexer_address: indexer_address_str.parse().unwrap(),
-            elasticsearch_url: Url::parse(elasticsearch_url_str).unwrap(),
-            tika_url: Url::parse(tika_url_str).unwrap(),
-            nnserver_url: Url::parse(nnserver_url_str).unwrap(),
-            open_on_start,
-            indexing_directories: indexing_directories_dir_items
-                .iter()
-                .map(|f| f.dir.clone())
-                .collect(),
-            exclude_file_regex: exclude_file_regex.to_owned(),
-            watcher_enabled,
-            debouncer_timeout: debouncer_timeout_str.parse().unwrap(),
-            max_file_size: (max_file_size_str.parse::<f64>().unwrap() * 1024.0 * 1024.0) as u64,
-            max_concurrent_files: max_concurrent_files_str.parse().unwrap(),
-            elasticsearch_batch_size: elasticsearch_batch_size_str.parse().unwrap(),
-            results_per_page: results_per_page_str.parse().unwrap(),
-            knn_candidates_multiplier: knn_candidates_multiplier_str.parse().unwrap(),
-            nn_server: NNServerSettings {
-                nnserver_address: nnserver_address_str.parse().unwrap(),
-                text_search_enabled,
-                image_search_enabled,
-                reranking_enabled,
-                max_sentences: max_sentences_str.parse().unwrap(),
-                window_size: window_size_str.parse().unwrap(),
-                window_step: window_step_str.parse().unwrap(),
-            },
-        }
+    fn get_max_file_size_mib(&self) -> f64 {
+        (self.max_file_size as f64) / 1024.0 / 1024.0
     }
 }
 
@@ -301,111 +64,86 @@ pub fn Settings<'a, G: Html>(
     status_dialog_state: &'a Signal<StatusDialogState>,
 ) -> View<G> {
     // Input values for settings
-    let indexer_address_str = create_signal(cx, settings.get().get_indexer_address_str());
-    let elasticsearch_url_str = create_signal(cx, settings.get().get_elasticsearch_url_str());
-    let tika_url_str = create_signal(cx, settings.get().get_tika_url_str());
-    let nnserver_url_str = create_signal(cx, settings.get().get_nnserver_url_str());
-    let open_on_start = create_signal(cx, settings.get().get_open_on_start());
+    let indexer_address = create_signal(cx, settings.get().indexer_address);
+    let elasticsearch_url = create_signal(cx, settings.get().elasticsearch_url.clone());
+    let tika_url = create_signal(cx, settings.get().tika_url.clone());
+    let nn_server_url = create_signal(cx, settings.get().nn_server_url.clone());
+    let open_on_start = create_signal(cx, settings.get().open_on_start);
     let indexing_directories =
         create_signal(cx, settings.get().get_indexing_directories_dir_items());
-    let exclude_file_regex = create_signal(cx, settings.get().get_exclude_file_regex());
-    let watcher_enabled = create_signal(cx, settings.get().get_watcher_enabled());
-    let debouncer_timeout_str = create_signal(cx, settings.get().get_debouncer_timeout_str());
-    let max_file_size_str = create_signal(cx, settings.get().get_max_file_size_str());
-    let max_concurrent_files_str = create_signal(cx, settings.get().get_max_concurrent_files_str());
-    let elasticsearch_batch_size_str =
-        create_signal(cx, settings.get().get_elasticsearch_batch_size_str());
-    let results_per_page_str = create_signal(cx, settings.get().get_results_per_page_str());
-    let knn_candidates_multiplier_str =
-        create_signal(cx, settings.get().get_knn_candidates_multiplier_str());
-    let nnserver_address_str = create_signal(cx, settings.get().get_nnserver_address_str());
-    let text_search_enabled = create_signal(cx, settings.get().get_text_search_enabled());
-    let image_search_enabled = create_signal(cx, settings.get().get_image_search_enabled());
-    let reranking_enabled = create_signal(cx, settings.get().get_reranking_enabled());
-    let max_sentences_str = create_signal(cx, settings.get().get_max_sentences_str());
-    let window_size_str = create_signal(cx, settings.get().get_window_size_str());
-    let window_step_str = create_signal(cx, settings.get().get_window_step_str());
+    let exclude_file_regex = create_signal(cx, settings.get().exclude_file_regex.clone());
+    let watcher_enabled = create_signal(cx, settings.get().watcher_enabled);
+    let debouncer_timeout = create_signal(cx, settings.get().debouncer_timeout);
+    let max_file_size = create_signal(cx, settings.get().get_max_file_size_mib());
+    let max_concurrent_files = create_signal(cx, settings.get().max_concurrent_files);
+    let elasticsearch_batch_size = create_signal(cx, settings.get().elasticsearch_batch_size);
+    let results_per_page = create_signal(cx, settings.get().results_per_page);
+    let knn_candidates_multiplier = create_signal(cx, settings.get().knn_candidates_multiplier);
+    let nn_server_address = create_signal(cx, settings.get().nn_server.nn_server_address);
+    let text_search_enabled = create_signal(cx, settings.get().nn_server.text_search_enabled);
+    let image_search_enabled = create_signal(cx, settings.get().nn_server.image_search_enabled);
+    let reranking_enabled = create_signal(cx, settings.get().nn_server.reranking_enabled);
+    let max_sentences = create_signal(cx, settings.get().nn_server.max_sentences);
+    let window_size = create_signal(cx, settings.get().nn_server.window_size);
+    let window_step = create_signal(cx, settings.get().nn_server.window_step);
 
     // Validation values for settings
-    let indexer_address_valid = create_memo(cx, || {
-        Settings::valid_indexer_address(&indexer_address_str.get())
-    });
-    let elasticsearch_url_valid = create_memo(cx, || {
-        Settings::valid_elasticsearch_url(&elasticsearch_url_str.get())
-    });
-    let tika_url_valid = create_memo(cx, || Settings::valid_tika_url(&tika_url_str.get()));
-    let nnserver_url_valid =
-        create_memo(cx, || Settings::valid_nnserver_url(&nnserver_url_str.get()));
-    let debouncer_timeout_valid = create_memo(cx, || {
-        Settings::valid_debouncer_timeout(&debouncer_timeout_str.get())
-    });
-    let max_file_size_valid = create_memo(cx, || {
-        Settings::valid_max_file_size(&max_file_size_str.get())
-    });
-    let max_concurrent_files_valid = create_memo(cx, || {
-        Settings::valid_max_concurrent_files(&max_concurrent_files_str.get())
-    });
-    let elasticsearch_batch_size_valid = create_memo(cx, || {
-        Settings::valid_elasticsearch_batch_size(&elasticsearch_batch_size_str.get())
-    });
-    let results_per_page_valid = create_memo(cx, || {
-        Settings::valid_results_per_page(&results_per_page_str.get())
-    });
-    let knn_candidates_multiplier_valid = create_memo(cx, || {
-        Settings::valid_knn_candidates_multiplier(&knn_candidates_multiplier_str.get())
-    });
-    let nnserver_address_valid = create_memo(cx, || {
-        Settings::valid_nnserver_address(&nnserver_address_str.get())
-    });
-    let max_sentences_valid = create_memo(cx, || {
-        Settings::valid_max_sentences(&max_sentences_str.get())
-    });
-    let window_size_valid = create_memo(cx, || Settings::valid_window_size(&window_size_str.get()));
-    let window_step_valid = create_memo(cx, || Settings::valid_window_step(&window_step_str.get()));
+    let indexer_address_valid = create_signal(cx, true);
+    let elasticsearch_url_valid = create_signal(cx, true);
+    let tika_url_valid = create_signal(cx, true);
+    let nn_server_url_valid = create_signal(cx, true);
+    let debouncer_timeout_valid = create_signal(cx, true);
+    let max_file_size_valid = create_signal(cx, true);
+    let max_concurrent_files_valid = create_signal(cx, true);
+    let elasticsearch_batch_size_valid = create_signal(cx, true);
+    let results_per_page_valid = create_signal(cx, true);
+    let knn_candidates_multiplier_valid = create_signal(cx, true);
+    let nn_server_address_valid = create_signal(cx, true);
+    let max_sentences_valid = create_signal(cx, true);
+    let window_size_valid = create_signal(cx, true);
+    let window_step_valid = create_signal(cx, true);
     let any_invalid = create_memo(cx, || {
         !*indexer_address_valid.get()
             || !*elasticsearch_url_valid.get()
             || !*tika_url_valid.get()
-            || !*nnserver_url_valid.get()
+            || !*nn_server_url_valid.get()
             || !*debouncer_timeout_valid.get()
             || !*max_file_size_valid.get()
             || !*max_concurrent_files_valid.get()
             || !*elasticsearch_batch_size_valid.get()
             || !*results_per_page_valid.get()
             || !*knn_candidates_multiplier_valid.get()
-            || !*nnserver_address_valid.get()
+            || !*nn_server_address_valid.get()
             || !*max_sentences_valid.get()
             || !*window_size_valid.get()
             || !*window_step_valid.get()
     });
 
     // Set input values from settings when they are updated (on load from server or reset)
-    create_effect(cx, || {
-        indexer_address_str.set(settings.get().get_indexer_address_str());
-        elasticsearch_url_str.set(settings.get().get_elasticsearch_url_str());
-        tika_url_str.set(settings.get().get_tika_url_str());
-        nnserver_url_str.set(settings.get().get_nnserver_url_str());
-        open_on_start.set(settings.get().get_open_on_start());
+    let update_settings = || {
+        indexer_address.set(settings.get().indexer_address);
+        elasticsearch_url.set(settings.get().elasticsearch_url.clone());
+        tika_url.set(settings.get().tika_url.clone());
+        nn_server_url.set(settings.get().nn_server_url.clone());
+        open_on_start.set(settings.get().open_on_start);
         indexing_directories.set(settings.get().get_indexing_directories_dir_items());
-        exclude_file_regex.set(settings.get().get_exclude_file_regex());
-        watcher_enabled.set(settings.get().get_watcher_enabled());
-        debouncer_timeout_str.set(settings.get().get_debouncer_timeout_str());
-        max_file_size_str.set(settings.get().get_max_file_size_str());
-        max_concurrent_files_str.set(settings.get().get_max_concurrent_files_str());
-        elasticsearch_batch_size_str.set(settings.get().get_elasticsearch_batch_size_str());
-        results_per_page_str.set(settings.get().get_results_per_page_str());
-        knn_candidates_multiplier_str.set(settings.get().get_knn_candidates_multiplier_str());
-        nnserver_address_str.set(settings.get().get_nnserver_address_str());
-        text_search_enabled.set(settings.get().get_text_search_enabled());
-        image_search_enabled.set(settings.get().get_image_search_enabled());
-        reranking_enabled.set(settings.get().get_reranking_enabled());
-        max_sentences_str.set(settings.get().get_max_sentences_str());
-        window_size_str.set(settings.get().get_window_size_str());
-        window_step_str.set(settings.get().get_window_step_str());
-    });
-    let reset_settings = |_| {
-        settings.trigger_subscribers();
+        exclude_file_regex.set(settings.get().exclude_file_regex.clone());
+        watcher_enabled.set(settings.get().watcher_enabled);
+        debouncer_timeout.set(settings.get().debouncer_timeout);
+        max_file_size.set(settings.get().get_max_file_size_mib());
+        max_concurrent_files.set(settings.get().max_concurrent_files);
+        elasticsearch_batch_size.set(settings.get().elasticsearch_batch_size);
+        results_per_page.set(settings.get().results_per_page);
+        knn_candidates_multiplier.set(settings.get().knn_candidates_multiplier);
+        nn_server_address.set(settings.get().nn_server.nn_server_address);
+        text_search_enabled.set(settings.get().nn_server.text_search_enabled);
+        image_search_enabled.set(settings.get().nn_server.image_search_enabled);
+        reranking_enabled.set(settings.get().nn_server.reranking_enabled);
+        max_sentences.set(settings.get().nn_server.max_sentences);
+        window_size.set(settings.get().nn_server.window_size);
+        window_step.set(settings.get().nn_server.window_step);
     };
+    let reset_settings = move |_| update_settings();
 
     // Load settings
     spawn_local_scoped(cx, async move {
@@ -414,6 +152,7 @@ pub fn Settings<'a, G: Html>(
         match get_settings().await {
             Ok(res) => {
                 settings.set(res);
+                update_settings();
                 status_dialog_state.set(StatusDialogState::None);
             }
             Err(e) => {
@@ -429,29 +168,35 @@ pub fn Settings<'a, G: Html>(
         spawn_local_scoped(cx, async move {
             status_dialog_state.set(StatusDialogState::Loading);
 
-            let new_settings = Settings::parse(
-                &indexer_address_str.get(),
-                &elasticsearch_url_str.get(),
-                &tika_url_str.get(),
-                &nnserver_url_str.get(),
-                *open_on_start.get(),
-                &indexing_directories.get(),
-                &exclude_file_regex.get(),
-                *watcher_enabled.get(),
-                &debouncer_timeout_str.get(),
-                &max_file_size_str.get(),
-                &max_concurrent_files_str.get(),
-                &elasticsearch_batch_size_str.get(),
-                &results_per_page_str.get(),
-                &knn_candidates_multiplier_str.get(),
-                &nnserver_address_str.get(),
-                *text_search_enabled.get(),
-                *image_search_enabled.get(),
-                *reranking_enabled.get(),
-                &max_sentences_str.get(),
-                &window_size_str.get(),
-                &window_step_str.get(),
-            );
+            let new_settings = Settings {
+                indexer_address: *indexer_address.get(),
+                elasticsearch_url: (*elasticsearch_url.get()).clone(),
+                tika_url: (*tika_url.get()).clone(),
+                nn_server_url: (*nn_server_url.get()).clone(),
+                open_on_start: *open_on_start.get(),
+                indexing_directories: indexing_directories
+                    .get()
+                    .iter()
+                    .map(|f| f.dir.clone())
+                    .collect(),
+                exclude_file_regex: (*exclude_file_regex.get()).clone(),
+                watcher_enabled: *watcher_enabled.get(),
+                debouncer_timeout: *debouncer_timeout.get(),
+                max_file_size: (*max_file_size.get() * 1024.0 * 1024.0) as u64,
+                max_concurrent_files: *max_concurrent_files.get(),
+                elasticsearch_batch_size: *elasticsearch_batch_size.get(),
+                results_per_page: *results_per_page.get(),
+                knn_candidates_multiplier: *knn_candidates_multiplier.get(),
+                nn_server: NNServerSettings {
+                    nn_server_address: *nn_server_address.get(),
+                    text_search_enabled: *text_search_enabled.get(),
+                    image_search_enabled: *image_search_enabled.get(),
+                    reranking_enabled: *reranking_enabled.get(),
+                    max_sentences: *max_sentences.get(),
+                    window_size: *window_size.get(),
+                    window_step: *window_step.get(),
+                },
+            };
 
             if let Err(e) = put_settings(&new_settings).await {
                 status_dialog_state.set(StatusDialogState::Error(format!(
@@ -461,6 +206,7 @@ pub fn Settings<'a, G: Html>(
             }
 
             settings.set(new_settings);
+            update_settings();
             status_dialog_state.set(StatusDialogState::Info("✅ Настройки сохранены".to_owned()));
         })
     };
@@ -472,13 +218,17 @@ pub fn Settings<'a, G: Html>(
                     fieldset {
                         legend { "Серверные настройки" }
                         TextSetting(id="indexer_address", label="Адрес сервера индексации: ",
-                            value=indexer_address_str, valid=indexer_address_valid)
+                            parse=SocketAddr::from_str,
+                            value=indexer_address, valid=indexer_address_valid)
                         TextSetting(id="elasticsearch_url", label="URL сервера Elasticsearch: ",
-                            value=elasticsearch_url_str, valid=elasticsearch_url_valid)
+                            parse=Url::parse,
+                            value=elasticsearch_url, valid=elasticsearch_url_valid)
                         TextSetting(id="tika_url", label="URL сервера Apache Tika: ",
-                            value=tika_url_str, valid=tika_url_valid)
-                        TextSetting(id="nnserver_url", label="URL сервера нейронных сетей: ",
-                            value=nnserver_url_str, valid=nnserver_url_valid)
+                            parse=Url::parse,
+                            value=tika_url, valid=tika_url_valid)
+                        TextSetting(id="nn_server_url", label="URL сервера нейронных сетей: ",
+                            parse=Url::parse,
+                            value=nn_server_url, valid=nn_server_url_valid)
                         CheckboxSetting(id="open_on_start", label="Открывать интерфейс при запуске сервера: ",
                             value=open_on_start)
                     }
@@ -496,27 +246,34 @@ pub fn Settings<'a, G: Html>(
                         CheckboxSetting(id="watcher_enabled", label="Отслеживать изменения файлов: ",
                             value=watcher_enabled)
                         NumberSetting(id="debouncer_timeout", label="Время задержки событий файловой системы (с): ",
-                            value=debouncer_timeout_str, valid=debouncer_timeout_valid)
+                            min=DEBOUNCER_TIMEOUT_MIN, max=DEBOUNCER_TIMEOUT_MAX,
+                            value=debouncer_timeout, valid=debouncer_timeout_valid)
                         NumberSetting(id="max_file_size", label="Максимальный размер файла (МиБ): ",
-                            value=max_file_size_str, valid=max_file_size_valid)
+                            min=MAX_FILE_SIZE_MIN, max=MAX_FILE_SIZE_MAX,
+                            value=max_file_size, valid=max_file_size_valid)
                         NumberSetting(id="max_concurrent_files", label="Максимальное количество одновременно обрабатываемых документов: ",
-                            value=max_concurrent_files_str, valid=max_concurrent_files_valid)
+                            min=MAX_CONCURRENT_FILES_MIN, max=MAX_CONCURRENT_FILES_MAX,
+                            value=max_concurrent_files, valid=max_concurrent_files_valid)
                         NumberSetting(id="elasticsearch_batch_size", label="Количество отправляемых в Elasticsearch изменений за раз: ",
-                            value=elasticsearch_batch_size_str, valid=elasticsearch_batch_size_valid)
+                            min=ELASTICSEARCH_BATCH_SIZE_MIN, max=ELASTICSEARCH_BATCH_SIZE_MAX,
+                            value=elasticsearch_batch_size, valid=elasticsearch_batch_size_valid)
                     }
 
                     fieldset {
                         legend { "Настройки поиска" }
                         NumberSetting(id="results_per_page", label="Количество результатов на странице: ",
-                            value=results_per_page_str, valid=results_per_page_valid)
+                            min=RESULTS_PER_PAGE_MIN, max=RESULTS_PER_PAGE_MAX,
+                            value=results_per_page, valid=results_per_page_valid)
                         NumberSetting(id="knn_candidates_multiplier", label="Множитель количества кандидатов kNN при семантическом поиске: ",
-                            value=knn_candidates_multiplier_str, valid=knn_candidates_multiplier_valid)
+                            min=KNN_CANDIDATES_MULTIPLIER_MIN, max=KNN_CANDIDATES_MULTIPLIER_MAX,
+                            value=knn_candidates_multiplier, valid=knn_candidates_multiplier_valid)
                     }
 
                     fieldset {
                         legend { "Настройки сервера нейронных сетей" }
-                        TextSetting(id="nnserver_address", label="Адрес сервера нейронных сетей: ",
-                            value=nnserver_address_str, valid=nnserver_address_valid)
+                        TextSetting(id="nn_server_address", label="Адрес сервера нейронных сетей: ",
+                            parse=SocketAddr::from_str,
+                            value=nn_server_address, valid=nn_server_address_valid)
                         CheckboxSetting(id="text_search_enabled", label="Семантический поиск по тексту: ",
                             value=text_search_enabled)
                         CheckboxSetting(id="image_search_enabled", label="Семантический поиск по изображениям: ",
@@ -524,11 +281,14 @@ pub fn Settings<'a, G: Html>(
                         CheckboxSetting(id="reranking_enabled", label="Переранжирование: ",
                             value=reranking_enabled)
                         NumberSetting(id="max_sentences", label="Максимальное количество обрабатываемых предложений: ",
-                            value=max_sentences_str, valid=max_sentences_valid)
+                            min=MAX_SENTENCES_MIN, max=MAX_SENTENCES_MAX,
+                            value=max_sentences, valid=max_sentences_valid)
                         NumberSetting(id="window_size", label="Размер окна слов: ",
-                            value=window_size_str, valid=window_size_valid)
+                            min=WINDOW_SIZE_MIN, max=WINDOW_SIZE_MAX,
+                            value=window_size, valid=window_size_valid)
                         NumberSetting(id="window_step", label="Шаг окна слов: ",
-                            value=window_step_str, valid=window_step_valid)
+                            min=WINDOW_STEP_MIN, max=WINDOW_STEP_MAX,
+                            value=window_step, valid=window_step_valid)
                     }
 
                     div(class="settings_buttons") {

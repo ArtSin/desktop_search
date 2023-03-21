@@ -329,7 +329,7 @@ fn get_es_request_must(search_request: &SearchRequest) -> Vec<Value> {
 async fn get_request_body(
     results_per_page: u32,
     reqwest_client: &reqwest_middleware::ClientWithMiddleware,
-    nnserver_url: Url,
+    nn_server_url: Url,
     knn_candidates_multiplier: u32,
     search_request: &SearchRequest,
 ) -> anyhow::Result<Value> {
@@ -354,7 +354,7 @@ async fn get_request_body(
             if text_search_enabled && !query.is_empty() {
                 let text_search_embedding = get_text_search_embedding(
                     reqwest_client,
-                    nnserver_url.clone(),
+                    nn_server_url.clone(),
                     BatchRequest { batched: false },
                     query,
                     false,
@@ -382,7 +382,7 @@ async fn get_request_body(
             if image_search_enabled && !query.is_empty() {
                 let image_search_text_embedding = get_image_search_text_embedding(
                     reqwest_client,
-                    nnserver_url,
+                    nn_server_url,
                     BatchRequest { batched: false },
                     query,
                 )
@@ -466,7 +466,7 @@ async fn get_request_body(
         }) => {
             let image_search_image_embedding = get_image_search_image_embedding(
                 reqwest_client,
-                nnserver_url,
+                nn_server_url,
                 BatchRequest { batched: false },
                 image_path,
             )
@@ -536,7 +536,7 @@ fn get_highlighted_optional_field(
 
 async fn rerank_results(
     state: Arc<ServerState>,
-    nnserver_url: Url,
+    nn_server_url: Url,
     query: &QueryType,
     results: Vec<SearchResult>,
 ) -> anyhow::Result<Vec<SearchResult>> {
@@ -554,7 +554,7 @@ async fn rerank_results(
             let mut tasks = Vec::new();
             for res in &results {
                 let state = Arc::clone(&state);
-                let nnserver_url = nnserver_url.clone();
+                let nn_server_url = nn_server_url.clone();
                 let query = query.clone();
                 let summary = res.file.text_data.summary.clone();
 
@@ -565,7 +565,7 @@ async fn rerank_results(
                     let queries = (0..summary.len()).map(|_| query.clone()).collect();
                     get_rerank_scores(
                         &state.reqwest_client,
-                        nnserver_url,
+                        nn_server_url,
                         BatchRequest { batched: true },
                         queries,
                         summary,
@@ -736,10 +736,10 @@ pub async fn search(
     State(state): State<Arc<ServerState>>,
     Json(search_request): Json<SearchRequest>,
 ) -> Result<Json<SearchResponse>, (StatusCode, String)> {
-    let (nnserver_url, results_per_page, knn_candidates_multiplier) = {
+    let (nn_server_url, results_per_page, knn_candidates_multiplier) = {
         let tmp = state.settings.read().await;
         (
-            tmp.nnserver_url.clone(),
+            tmp.nn_server_url.clone(),
             tmp.results_per_page,
             tmp.knn_candidates_multiplier,
         )
@@ -747,7 +747,7 @@ pub async fn search(
     let es_request_body = get_request_body(
         results_per_page,
         &state.reqwest_client,
-        nnserver_url.clone(),
+        nn_server_url.clone(),
         knn_candidates_multiplier,
         &search_request,
     )
@@ -762,7 +762,7 @@ pub async fn search(
     .await
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
     let mut results = get_results(&es_response_body);
-    results = rerank_results(state, nnserver_url, &search_request.query, results)
+    results = rerank_results(state, nn_server_url, &search_request.query, results)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
     let pages = get_pages(results_per_page, &es_response_body, search_request.page);

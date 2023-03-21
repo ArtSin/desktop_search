@@ -9,7 +9,7 @@ pub struct Settings {
     pub indexer_address: SocketAddr,
     pub elasticsearch_url: Url,
     pub tika_url: Url,
-    pub nnserver_url: Url,
+    pub nn_server_url: Url,
     pub open_on_start: bool,
     pub exclude_file_regex: String,
     pub watcher_enabled: bool,
@@ -29,7 +29,7 @@ impl Default for Settings {
             indexer_address: "127.0.0.1:11000".parse().unwrap(),
             elasticsearch_url: Url::parse("http://127.0.0.1:9200").unwrap(),
             tika_url: Url::parse("http://127.0.0.1:9998").unwrap(),
-            nnserver_url: Url::parse("http://127.0.0.1:10000").unwrap(),
+            nn_server_url: Url::parse("http://127.0.0.1:10000").unwrap(),
             open_on_start: true,
             indexing_directories: Vec::new(),
             exclude_file_regex: r"[/\\]\.git[/\\]|\.pygtex$|\.pygstyle$|\.aux$|\.bbl$|\.bcf$|\.blg$|\.synctex\.gz$|\.toc$".to_owned(),
@@ -48,7 +48,7 @@ impl Default for Settings {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct NNServerSettings {
-    pub nnserver_address: SocketAddr,
+    pub nn_server_address: SocketAddr,
     pub text_search_enabled: bool,
     pub image_search_enabled: bool,
     pub reranking_enabled: bool,
@@ -60,7 +60,7 @@ pub struct NNServerSettings {
 impl Default for NNServerSettings {
     fn default() -> Self {
         Self {
-            nnserver_address: "127.0.0.1:10000".parse().unwrap(),
+            nn_server_address: "127.0.0.1:10000".parse().unwrap(),
             text_search_enabled: true,
             image_search_enabled: true,
             reranking_enabled: true,

@@ -90,11 +90,11 @@ impl Parser for ImageParser {
 
         let image_search_enabled = state.settings.read().await.nn_server.image_search_enabled;
         let embedding = if image_search_enabled {
-            let nnserver_url = state.settings.read().await.nnserver_url.clone();
+            let nn_server_url = state.settings.read().await.nn_server_url.clone();
             if metadata.content_type.starts_with("image") {
                 get_image_search_image_embedding_generic(
                     &state.reqwest_client,
-                    nnserver_url,
+                    nn_server_url,
                     BatchRequest { batched: true },
                     file_bytes.to_vec(),
                 )
@@ -105,7 +105,7 @@ impl Parser for ImageParser {
                     Ok(thumbnail) => {
                         match get_image_search_image_embedding_generic(
                             &state.reqwest_client,
-                            nnserver_url,
+                            nn_server_url,
                             BatchRequest { batched: true },
                             thumbnail.0,
                         )

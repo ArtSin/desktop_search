@@ -1,4 +1,4 @@
-use std::ops::DerefMut;
+use std::{fmt::Display, ops::DerefMut, str::FromStr};
 
 use common_lib::{actions::PickFolderResult, settings::IndexingDirectory};
 use sycamore::{futures::spawn_local_scoped, prelude::*};
@@ -26,40 +26,93 @@ pub fn SimpleTextSetting<'a, G: Html>(cx: Scope<'a>, props: SimpleTextSettingPro
 }
 
 #[derive(Prop)]
-pub struct TextSettingProps<'a> {
+pub struct TextSettingProps<'a, T, F> {
     pub id: &'static str,
     pub label: &'static str,
-    pub value: &'a Signal<String>,
-    pub valid: &'a ReadSignal<bool>,
+    pub parse: F,
+    pub value: &'a Signal<T>,
+    pub valid: &'a Signal<bool>,
 }
 
 #[component]
-pub fn TextSetting<'a, G: Html>(cx: Scope<'a>, props: TextSettingProps<'a>) -> View<G> {
-    let value = props.value;
+pub fn TextSetting<'a, T, E, F, G>(cx: Scope<'a>, props: TextSettingProps<'a, T, F>) -> View<G>
+where
+    T: Display,
+    F: Fn(&str) -> Result<T, E> + 'a,
+    G: Html,
+{
+    let value_str = create_signal(cx, props.value.to_string());
+
+    create_effect(cx, move || match (props.parse)(&value_str.get()) {
+        Ok(x) => {
+            props.valid.set(true);
+            props.value.set_silent(x);
+        }
+        Err(_) => {
+            props.valid.set(false);
+        }
+    });
+    create_effect(cx, || {
+        value_str.set(props.value.get().to_string());
+    });
+
     view! { cx,
         div(class="setting") {
             label(for=props.id) { (props.label) }
-            input(type="text", id=props.id, name=props.id, bind:value=value) {}
+            input(type="text", id=props.id, name=props.id, bind:value=value_str) {}
             (if *props.valid.get() { "✅" } else { "❌" })
         }
     }
 }
 
 #[derive(Prop)]
-pub struct NumberSettingProps<'a> {
+pub struct NumberSettingProps<'a, T> {
     pub id: &'static str,
     pub label: &'static str,
-    pub value: &'a Signal<String>,
-    pub valid: &'a ReadSignal<bool>,
+    pub min: T,
+    pub max: T,
+    pub value: &'a Signal<T>,
+    pub valid: &'a Signal<bool>,
 }
 
 #[component]
-pub fn NumberSetting<'a, G: Html>(cx: Scope<'a>, props: NumberSettingProps<'a>) -> View<G> {
-    let value = props.value;
+pub fn NumberSetting<'a, T, G>(cx: Scope<'a>, props: NumberSettingProps<'a, T>) -> View<G>
+where
+    T: Copy + FromStr + Display + PartialOrd,
+    <T as FromStr>::Err: Display,
+    G: Html,
+{
+    let value_str = create_signal(cx, props.value.to_string());
+
+    create_effect(cx, move || {
+        match value_str
+            .get()
+            .parse::<T>()
+            .map_err(|e| e.to_string())
+            .and_then(|x| {
+                if (props.min..=props.max).contains(&x) {
+                    Ok(x)
+                } else {
+                    Err("Out of bounds".to_owned())
+                }
+            }) {
+            Ok(x) => {
+                props.valid.set(true);
+                props.value.set_silent(x);
+            }
+            Err(_) => {
+                props.valid.set(false);
+            }
+        }
+    });
+    create_effect(cx, || {
+        value_str.set(props.value.get().to_string());
+    });
+
     view! { cx,
         div(class="setting") {
             label(for=props.id) { (props.label) }
-            input(type="text", size=10, id=props.id, name=props.id, bind:value=value) {}
+            input(type="text", size=10, id=props.id, name=props.id, bind:value=value_str) {}
             (if *props.valid.get() { "✅" } else { "❌" })
         }
     }

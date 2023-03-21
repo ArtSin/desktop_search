@@ -28,12 +28,12 @@ pub struct Scores {
 
 pub async fn get_image_search_image_embedding_generic<T: Into<reqwest::Body>>(
     reqwest_client: &reqwest_middleware::ClientWithMiddleware,
-    mut nnserver_url: Url,
+    mut nn_server_url: Url,
     batch_request: BatchRequest,
     image: T,
 ) -> anyhow::Result<ImageEmbedding> {
-    nnserver_url.set_path("clip/image");
-    let req_builder = reqwest_client.post(nnserver_url).query(&batch_request);
+    nn_server_url.set_path("clip/image");
+    let req_builder = reqwest_client.post(nn_server_url).query(&batch_request);
     let response = req_builder.body(image).send().await?;
     if response.status().is_client_error() {
         return Ok(ImageEmbedding { embedding: None });
@@ -44,23 +44,23 @@ pub async fn get_image_search_image_embedding_generic<T: Into<reqwest::Body>>(
 
 pub async fn get_image_search_image_embedding(
     reqwest_client: &reqwest_middleware::ClientWithMiddleware,
-    nnserver_url: Url,
+    nn_server_url: Url,
     batch_request: BatchRequest,
     image_path: impl AsRef<Path>,
 ) -> anyhow::Result<ImageEmbedding> {
     let file = tokio::fs::read(image_path).await?;
-    get_image_search_image_embedding_generic(reqwest_client, nnserver_url, batch_request, file)
+    get_image_search_image_embedding_generic(reqwest_client, nn_server_url, batch_request, file)
         .await
 }
 
 pub async fn get_image_search_text_embedding(
     reqwest_client: &reqwest_middleware::ClientWithMiddleware,
-    mut nnserver_url: Url,
+    mut nn_server_url: Url,
     batch_request: BatchRequest,
     text: &str,
 ) -> anyhow::Result<TextEmbedding> {
-    nnserver_url.set_path("clip/text");
-    let req_builder = reqwest_client.post(nnserver_url).query(&batch_request);
+    nn_server_url.set_path("clip/text");
+    let req_builder = reqwest_client.post(nn_server_url).query(&batch_request);
     let embedding = req_builder
         .json(&json!({ "text": text }))
         .send()
@@ -72,13 +72,13 @@ pub async fn get_image_search_text_embedding(
 
 pub async fn get_text_search_embedding(
     reqwest_client: &reqwest_middleware::ClientWithMiddleware,
-    mut nnserver_url: Url,
+    mut nn_server_url: Url,
     batch_request: BatchRequest,
     text: &str,
     summary_enabled: bool,
 ) -> anyhow::Result<SummaryTextEmbedding> {
-    nnserver_url.set_path("minilm/text");
-    let req_builder = reqwest_client.post(nnserver_url).query(&batch_request);
+    nn_server_url.set_path("minilm/text");
+    let req_builder = reqwest_client.post(nn_server_url).query(&batch_request);
     let embedding = req_builder
         .json(&json!({
             "text": text,
@@ -93,13 +93,13 @@ pub async fn get_text_search_embedding(
 
 pub async fn get_rerank_scores(
     reqwest_client: &reqwest_middleware::ClientWithMiddleware,
-    mut nnserver_url: Url,
+    mut nn_server_url: Url,
     batch_request: BatchRequest,
     queries: Vec<String>,
     paragraphs: Vec<String>,
 ) -> anyhow::Result<Scores> {
-    nnserver_url.set_path("minilm/rerank");
-    let req_builder = reqwest_client.post(nnserver_url).query(&batch_request);
+    nn_server_url.set_path("minilm/rerank");
+    let req_builder = reqwest_client.post(nn_server_url).query(&batch_request);
     let embedding = req_builder
         .json(&json!({
             "queries": queries,
