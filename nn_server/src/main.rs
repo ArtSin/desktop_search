@@ -6,7 +6,7 @@ use axum::{
 };
 use common_lib::settings::{NNServerSettings, Settings};
 use ndarray::{Array, ArrayD, Dimension};
-use onnxruntime::{environment::Environment, LoggingLevel};
+use onnxruntime::{environment::Environment, session::SessionBuilder, LoggingLevel};
 use serde::Serialize;
 use tokio::signal;
 use tower::ServiceBuilder;
@@ -44,6 +44,18 @@ impl Embedding {
         Self {
             embedding: Embedding::normalize(embedding).into_iter().collect(),
         }
+    }
+}
+
+/// Configure ONNX Runtime to use CPU or CUDA depending on the setting
+fn set_device<'a>(
+    session_builder: SessionBuilder<'a>,
+    settings: &'a NNServerSettings,
+) -> onnxruntime::Result<SessionBuilder<'a>> {
+    if settings.cuda_enabled {
+        session_builder.use_cuda(0)
+    } else {
+        Ok(session_builder)
     }
 }
 
@@ -116,14 +128,14 @@ fn initialize_models(settings: &NNServerSettings) -> anyhow::Result<()> {
         .with_log_level(LoggingLevel::Warning)
         .build()?;
     if settings.image_search_enabled {
-        clip_image::initialize_model(&environment)?;
-        clip_text::initialize_model(&environment)?;
+        clip_image::initialize_model(settings, &environment)?;
+        clip_text::initialize_model(settings, &environment)?;
     }
     if settings.text_search_enabled {
-        minilm_text::initialize_model(&environment)?;
+        minilm_text::initialize_model(settings, &environment)?;
     }
     if settings.reranking_enabled {
-        minilm_rerank::initialize_model(&environment)?;
+        minilm_rerank::initialize_model(settings, &environment)?;
     }
     Ok(())
 }

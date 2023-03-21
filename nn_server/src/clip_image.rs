@@ -1,7 +1,7 @@
 use std::time::Duration;
 
 use axum::{body::Bytes, extract::Query, http::StatusCode, Json};
-use common_lib::BatchRequest;
+use common_lib::{settings::NNServerSettings, BatchRequest};
 use image::{imageops::FilterType, DynamicImage};
 use ndarray::{arr3, Array3, Axis};
 use nshare::ToNdarray3;
@@ -12,32 +12,28 @@ use tracing_unwrap::{OptionExt, ResultExt};
 
 use crate::{
     batch_processing::{batch_process, log_processing_function, start_batch_process, Command},
-    Embedding, PATH_PREFIX,
+    set_device, Embedding, PATH_PREFIX,
 };
-
-const BATCH_SIZE: usize = 32;
-const MAX_DELAY: Duration = Duration::from_millis(200);
-const MAX_CAPACITY: usize = 2 * BATCH_SIZE;
 
 static MODEL: OnceCell<Session> = OnceCell::new();
 static BATCH_SENDER: OnceCell<mpsc::Sender<Command<Array3<f32>, Embedding>>> = OnceCell::new();
 
-pub fn initialize_model(environment: &Environment) -> onnxruntime::Result<()> {
+pub fn initialize_model(
+    settings: &NNServerSettings,
+    environment: &Environment,
+) -> onnxruntime::Result<()> {
     MODEL
         .set(
-            environment
-                .new_session_builder()?
-                .use_cuda(0)?
+            set_device(environment.new_session_builder()?, settings)?
                 .with_graph_optimization_level(GraphOptimizationLevel::All)?
-                .with_intra_op_num_threads(1)?
                 .with_model_from_file(PATH_PREFIX.to_owned() + "models/clip-ViT-B-32/model.onnx")?,
         )
         .unwrap_or_log();
     BATCH_SENDER
         .set(start_batch_process(
-            BATCH_SIZE,
-            MAX_DELAY,
-            MAX_CAPACITY,
+            settings.clip_image_batch_size,
+            Duration::from_millis(settings.clip_image_max_delay_ms),
+            2 * settings.clip_image_batch_size,
             |batch| log_processing_function("CLIP/Image", compute_embeddings, batch),
         ))
         .unwrap_or_log();

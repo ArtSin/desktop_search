@@ -1,7 +1,7 @@
 use std::time::Duration;
 
 use axum::{extract::Query, http::StatusCode, Json};
-use common_lib::BatchRequest;
+use common_lib::{settings::NNServerSettings, BatchRequest};
 use once_cell::sync::OnceCell;
 use onnxruntime::{environment::Environment, session::Session, GraphOptimizationLevel};
 use serde::{Deserialize, Serialize};
@@ -14,13 +14,10 @@ use tracing_unwrap::{OptionExt, ResultExt};
 
 use crate::{
     batch_processing::{batch_process, log_processing_function, start_batch_process, Command},
+    set_device,
     text_processing::{preprocess_texts, PreprocessedText},
     PATH_PREFIX,
 };
-
-const BATCH_SIZE: usize = 32;
-const MAX_DELAY: Duration = Duration::from_millis(100);
-const MAX_CAPACITY: usize = 2 * BATCH_SIZE;
 
 static MODEL: OnceCell<Session> = OnceCell::new();
 static TOKENIZER: OnceCell<Tokenizer> = OnceCell::new();
@@ -37,14 +34,14 @@ pub struct Scores {
     scores: Vec<f32>,
 }
 
-pub fn initialize_model(environment: &Environment) -> anyhow::Result<()> {
+pub fn initialize_model(
+    settings: &NNServerSettings,
+    environment: &Environment,
+) -> anyhow::Result<()> {
     MODEL
         .set(
-            environment
-                .new_session_builder()?
-                .use_cuda(0)?
+            set_device(environment.new_session_builder()?, settings)?
                 .with_graph_optimization_level(GraphOptimizationLevel::All)?
-                .with_intra_op_num_threads(1)?
                 .with_model_from_file(
                     PATH_PREFIX.to_owned() + "models/mMiniLM-L6-v2-mmarco-v2/model.onnx",
                 )?,
@@ -77,9 +74,9 @@ pub fn initialize_model(environment: &Environment) -> anyhow::Result<()> {
         .unwrap_or_log();
     BATCH_SENDER
         .set(start_batch_process(
-            BATCH_SIZE,
-            MAX_DELAY,
-            MAX_CAPACITY,
+            settings.minilm_rerank_batch_size,
+            Duration::from_millis(settings.minilm_rerank_max_delay_ms),
+            2 * settings.minilm_rerank_batch_size,
             |batch| log_processing_function("MiniLM/Rerank", compute_embeddings, batch),
         ))
         .unwrap_or_log();

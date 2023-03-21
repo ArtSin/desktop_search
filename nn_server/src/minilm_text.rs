@@ -17,13 +17,11 @@ use tracing_unwrap::{OptionExt, ResultExt};
 use crate::{
     batch_processing::{batch_process, log_processing_function, start_batch_process, Command},
     lexrank::degree_centrality_scores,
+    set_device,
     text_processing::{mean_pooling, preprocess_texts, PreprocessedText},
     Embedding, PATH_PREFIX,
 };
 
-const BATCH_SIZE: usize = 64;
-const MAX_DELAY: Duration = Duration::from_millis(100);
-const MAX_CAPACITY: usize = 2 * BATCH_SIZE;
 const EMBEDDING_SIZE: usize = 384;
 
 static MODEL: OnceCell<Session> = OnceCell::new();
@@ -43,14 +41,14 @@ pub struct SummaryEmbedding {
     summary: Vec<String>,
 }
 
-pub fn initialize_model(environment: &Environment) -> anyhow::Result<()> {
+pub fn initialize_model(
+    settings: &NNServerSettings,
+    environment: &Environment,
+) -> anyhow::Result<()> {
     MODEL
         .set(
-            environment
-                .new_session_builder()?
-                .use_cuda(0)?
+            set_device(environment.new_session_builder()?, settings)?
                 .with_graph_optimization_level(GraphOptimizationLevel::All)?
-                .with_intra_op_num_threads(1)?
                 .with_model_from_file(
                     PATH_PREFIX.to_owned()
                         + "models/paraphrase-multilingual-MiniLM-L12-v2/model.onnx",
@@ -68,9 +66,9 @@ pub fn initialize_model(environment: &Environment) -> anyhow::Result<()> {
         .unwrap_or_log();
     BATCH_SENDER
         .set(start_batch_process(
-            BATCH_SIZE,
-            MAX_DELAY,
-            MAX_CAPACITY,
+            settings.minilm_text_batch_size,
+            Duration::from_millis(settings.minilm_text_max_delay_ms),
+            2 * settings.minilm_text_batch_size,
             |batch| log_processing_function("MiniLM/Text", compute_embeddings, batch),
         ))
         .unwrap_or_log();
@@ -155,8 +153,6 @@ pub async fn process_request(
     );
 
     let summary = if request.summary_enabled {
-        const K: usize = 3;
-
         let norm_paragraphs_embeddings: Vec<_> = paragraphs_embeddings
             .into_iter()
             .map(Embedding::normalize)
@@ -183,7 +179,7 @@ pub async fn process_request(
 
         indices
             .into_iter()
-            .take(K)
+            .take(settings.summary_len as usize)
             .map(|i| paragraphs[i].clone())
             .collect()
     } else {

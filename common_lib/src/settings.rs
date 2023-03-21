@@ -52,9 +52,19 @@ pub struct NNServerSettings {
     pub text_search_enabled: bool,
     pub image_search_enabled: bool,
     pub reranking_enabled: bool,
+    pub cuda_enabled: bool,
+    pub clip_image_batch_size: usize,
+    pub clip_image_max_delay_ms: u64,
+    pub clip_text_batch_size: usize,
+    pub clip_text_max_delay_ms: u64,
+    pub minilm_text_batch_size: usize,
+    pub minilm_text_max_delay_ms: u64,
+    pub minilm_rerank_batch_size: usize,
+    pub minilm_rerank_max_delay_ms: u64,
     pub max_sentences: u32,
     pub window_size: u32,
     pub window_step: u32,
+    pub summary_len: u32,
 }
 
 impl Default for NNServerSettings {
@@ -64,9 +74,19 @@ impl Default for NNServerSettings {
             text_search_enabled: true,
             image_search_enabled: true,
             reranking_enabled: true,
+            cuda_enabled: true,
+            clip_image_batch_size: 32,
+            clip_image_max_delay_ms: 200,
+            clip_text_batch_size: 32,
+            clip_text_max_delay_ms: 100,
+            minilm_text_batch_size: 32,
+            minilm_text_max_delay_ms: 100,
+            minilm_rerank_batch_size: 32,
+            minilm_rerank_max_delay_ms: 100,
             max_sentences: 100,
             window_size: 100,
             window_step: 75,
+            summary_len: 3,
         }
     }
 }

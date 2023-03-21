@@ -1,7 +1,7 @@
 use std::time::Duration;
 
 use axum::{extract::Query, http::StatusCode, Json};
-use common_lib::BatchRequest;
+use common_lib::{settings::NNServerSettings, BatchRequest};
 use once_cell::sync::OnceCell;
 use onnxruntime::{environment::Environment, session::Session, GraphOptimizationLevel};
 use serde::Deserialize;
@@ -11,13 +11,10 @@ use tracing_unwrap::{OptionExt, ResultExt};
 
 use crate::{
     batch_processing::{batch_process, log_processing_function, start_batch_process, Command},
+    set_device,
     text_processing::{mean_pooling, preprocess_texts, PreprocessedText},
     Embedding, PATH_PREFIX,
 };
-
-const BATCH_SIZE: usize = 32;
-const MAX_DELAY: Duration = Duration::from_millis(100);
-const MAX_CAPACITY: usize = 2 * BATCH_SIZE;
 
 static MAIN_MODEL: OnceCell<Session> = OnceCell::new();
 static DENSE_MODEL: OnceCell<Session> = OnceCell::new();
@@ -29,26 +26,25 @@ pub struct CLIPTextRequest {
     text: String,
 }
 
-pub fn initialize_model(environment: &Environment) -> anyhow::Result<()> {
+pub fn initialize_model(
+    settings: &NNServerSettings,
+    environment: &Environment,
+) -> anyhow::Result<()> {
     MAIN_MODEL
         .set(
-            environment
-                .new_session_builder()?
-                .use_cuda(0)?
+            set_device(environment.new_session_builder()?, settings)?
                 .with_graph_optimization_level(GraphOptimizationLevel::All)?
-                .with_intra_op_num_threads(1)?
                 .with_model_from_file(
                     PATH_PREFIX.to_owned() + "models/clip-ViT-B-32-multilingual-v1/model.onnx",
                 )?,
         )
         .unwrap_or_log();
+    // Always on CPU
     DENSE_MODEL
         .set(
             environment
                 .new_session_builder()?
-                // .use_cuda(0)?
                 .with_graph_optimization_level(GraphOptimizationLevel::All)?
-                .with_intra_op_num_threads(1)?
                 .with_model_from_file(
                     PATH_PREFIX.to_owned() + "models/clip-ViT-B-32-multilingual-v1/dense.onnx",
                 )?,
@@ -69,9 +65,9 @@ pub fn initialize_model(environment: &Environment) -> anyhow::Result<()> {
         .unwrap_or_log();
     BATCH_SENDER
         .set(start_batch_process(
-            BATCH_SIZE,
-            MAX_DELAY,
-            MAX_CAPACITY,
+            settings.clip_text_batch_size,
+            Duration::from_millis(settings.clip_text_max_delay_ms),
+            2 * settings.clip_text_batch_size,
             |batch| log_processing_function("CLIP/Text", compute_embeddings, batch),
         ))
         .unwrap_or_log();
