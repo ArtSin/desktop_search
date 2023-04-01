@@ -76,7 +76,7 @@ impl Default for NNServerSettings {
             reranking_enabled: true,
             cuda_enabled: true,
             clip_image_batch_size: 32,
-            clip_image_max_delay_ms: 200,
+            clip_image_max_delay_ms: 100,
             clip_text_batch_size: 32,
             clip_text_max_delay_ms: 100,
             minilm_text_batch_size: 32,

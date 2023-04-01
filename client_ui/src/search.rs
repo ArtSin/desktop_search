@@ -112,6 +112,7 @@ pub fn Search<'a, G: Html>(
 
     let preview_data = create_signal(cx, PreviewData::default());
 
+    let no_searches = create_signal(cx, true);
     let search_results = create_signal(cx, Vec::new());
     let pages = create_signal(cx, Vec::new());
     let suggestion = create_signal(cx, None);
@@ -142,6 +143,7 @@ pub fn Search<'a, G: Html>(
 
     let search = move |page: u32| {
         spawn_local_scoped(cx, async move {
+            no_searches.set(false);
             status_dialog_state.set(StatusDialogState::Loading);
 
             let search_query = match *query_type.get() {
@@ -340,11 +342,30 @@ pub fn Search<'a, G: Html>(
                     view! { cx, }
                 })
 
-                SearchResults(search_results=search_results, preview_data=preview_data,
-                    status_dialog_state=status_dialog_state)
-
-                Pagination(pages=pages, search=search)
-
+                (if *no_searches.get() {
+                    view! { cx,
+                        div(style="text-align: center;") {
+                            p { "Перед началом работы выберите индексируемые папки на вкладке \"Настройки\" и сохраните их." }
+                            p { "Затем проиндексируйте их на вкладке \"Индексация\"." }
+                            p { "Для поиска выберите тип запроса слева, введите текст запроса или выберите изображение выше." }
+                            p { "При необходимости выберите тип поиска, тип файлов, папку поиска, дополнительные фильтры слева." }
+                        }
+                    }
+                } else {
+                    view! { cx,
+                        (if search_results.get().is_empty() {
+                            view! { cx,
+                                h3(style="text-align: center;") { "Ничего не найдено" }
+                            }
+                        } else {
+                            view! { cx,
+                                SearchResults(search_results=search_results, preview_data=preview_data,
+                                    status_dialog_state=status_dialog_state)
+                                Pagination(pages=pages, search=search)
+                            }
+                        })
+                    }
+                })
             }
 
             Preview(preview_data=preview_data, status_dialog_state=status_dialog_state)

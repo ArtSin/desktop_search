@@ -31,12 +31,12 @@ tracing-unwrap.workspace = true
 axum.workspace = true
 tower.workspace = true
 tower-http.workspace = true
-walkdir = "2.3.2"
-open = "3.2.0"
-rfd = { version = "0.11.1", default-features = false, features = [
+walkdir = "2.3.3"
+open = "4.0.1"
+rfd = { version = "0.11.3", default-features = false, features = [
     "xdg-portal",
 ] }
-regex = "1.7.1"
+regex = "1.7.3"
 notify = { version = "5.1.0", default-features = false, features = [
     "macos_kqueue",
 ] }

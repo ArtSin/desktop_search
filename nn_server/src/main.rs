@@ -1,7 +1,10 @@
 use std::{sync::Arc, time::Duration};
 
 use axum::{
-    error_handling::HandleErrorLayer, extract::DefaultBodyLimit, http::StatusCode, routing::post,
+    error_handling::HandleErrorLayer,
+    extract::DefaultBodyLimit,
+    http::StatusCode,
+    routing::{get, post},
     BoxError, Router,
 };
 use common_lib::settings::{NNServerSettings, Settings};
@@ -82,7 +85,7 @@ async fn main() {
 
     initialize_models(&settings).expect_or_log("Can't initialize models");
 
-    let mut app = Router::new();
+    let mut app = Router::new().route("/health", get(get_health));
     if settings.image_search_enabled {
         app = app
             .route("/clip/image", post(clip_image::process_request))
@@ -138,6 +141,10 @@ fn initialize_models(settings: &NNServerSettings) -> anyhow::Result<()> {
         minilm_rerank::initialize_model(settings, &environment)?;
     }
     Ok(())
+}
+
+async fn get_health() -> &'static str {
+    "OK"
 }
 
 async fn shutdown_signal() {

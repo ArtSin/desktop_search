@@ -18,7 +18,7 @@ axum.workspace = true
 tower.workspace = true
 tower-http.workspace = true
 once_cell = "1.17.1"
-image = "0.24.5"
+image = "0.24.6"
 ndarray = { version = "0.15.6", features = ["serde", "approx"] }
 nshare = { version = "0.9.0", features = ["image", "ndarray"] }
 tokenizers = "0.13.2"
