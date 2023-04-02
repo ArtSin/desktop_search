@@ -51,35 +51,38 @@ async fn run_elasticsearch() -> tokio::io::Result<ExitStatus> {
 }
 
 async fn run_tika() -> tokio::io::Result<ExitStatus> {
-    let mut java_path = ELASTICSEARCH_FOLDER.to_owned() + "/jdk/bin/java";
     if cfg!(windows) {
-        java_path += ".exe";
+        let tika_path = "tika.bat".to_owned();
+        Command::new(tika_path).spawn().unwrap_or_log().wait().await
+    } else {
+        let java_path = ELASTICSEARCH_FOLDER.to_owned() + "/jdk/bin/java";
+        Command::new(java_path)
+            .args(["-jar", TIKA_JAR, "-c", TIKA_CONFIG])
+            .spawn()
+            .unwrap_or_log()
+            .wait()
+            .await
     }
-    Command::new(java_path)
-        .args(["-jar", TIKA_JAR, "-c", TIKA_CONFIG])
-        .spawn()
-        .unwrap_or_log()
-        .wait()
-        .await
 }
 
 async fn run_nn_server() -> tokio::io::Result<ExitStatus> {
-    let mut nn_server_path = NN_SERVER_PATH.to_owned();
     if cfg!(windows) {
-        nn_server_path += ".exe";
-    }
-    let env_name = if cfg!(windows) {
-        "PATH"
+        let nn_server_path = NN_SERVER_PATH.to_owned() + ".exe";
+        Command::new(nn_server_path)
+            .spawn()
+            .unwrap_or_log()
+            .wait()
+            .await
     } else {
-        "LD_LIBRARY_PATH"
-    };
-    let env_value = std::fs::canonicalize(ONNX_RUNTIME_LIB_FOLDER).unwrap_or_log();
-    Command::new(nn_server_path)
-        .env(env_name, env_value)
-        .spawn()
-        .unwrap_or_log()
-        .wait()
-        .await
+        let env_name = "LD_LIBRARY_PATH";
+        let env_value = std::fs::canonicalize(ONNX_RUNTIME_LIB_FOLDER).unwrap_or_log();
+        Command::new(NN_SERVER_PATH)
+            .env(env_name, env_value)
+            .spawn()
+            .unwrap_or_log()
+            .wait()
+            .await
+    }
 }
 
 async fn run_indexer() -> tokio::io::Result<ExitStatus> {
