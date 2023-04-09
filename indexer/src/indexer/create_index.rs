@@ -90,7 +90,7 @@ pub async fn create_index(es_client: &Elasticsearch) -> Result<(), elasticsearch
                                 ]
                             },
                             "path_hierarchy_analyzer": {
-                                "char_filter": "path_char_filter",
+                                "char_filter": "path_hierarchy_char_filter",
                                 "tokenizer": "path_hierarchy_tokenizer"
                             },
                             "en_ru_analyzer_shingles": {
