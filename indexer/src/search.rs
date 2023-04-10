@@ -547,7 +547,7 @@ async fn rerank_results(
             reranking_coeff,
             ..
         }) => {
-            if !reranking_enabled {
+            if !reranking_enabled || query.is_empty() {
                 return Ok(results);
             }
 

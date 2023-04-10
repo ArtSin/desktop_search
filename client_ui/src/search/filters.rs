@@ -72,7 +72,14 @@ pub fn CheckboxOptionFilter<'a, G: Html>(
     let value = create_signal(cx, false);
 
     create_effect(cx, || {
-        props.value_enabled.set(enabled.get().then(|| *value.get()));
+        props
+            .value_enabled
+            .set_silent(enabled.get().then(|| *value.get()));
+    });
+    create_effect(cx, || {
+        let val = props.value_enabled.get();
+        enabled.set(val.is_some());
+        value.set(val.unwrap_or_default());
     });
 
     view! { cx,
@@ -102,7 +109,10 @@ where
     G: Html,
 {
     let value_str = create_signal(cx, props.options.get().first().unwrap().0.to_string());
-    create_effect(cx, || props.value.set(value_str.get().parse().unwrap()));
+    create_effect(cx, || {
+        props.value.set_silent(value_str.get().parse().unwrap())
+    });
+    create_effect(cx, || value_str.set(props.value.get().to_string()));
 
     view! { cx,
         div(class="filter_field") {
@@ -142,7 +152,15 @@ where
     create_effect(cx, || {
         props
             .value
-            .set(enabled.get().then(|| value_str.get().parse().unwrap()))
+            .set_silent(enabled.get().then(|| value_str.get().parse().unwrap()))
+    });
+    create_effect(cx, || {
+        let val = props.value.get();
+        enabled.set(val.is_some());
+        value_str.set(
+            val.map(|x| x.to_string())
+                .unwrap_or_else(|| props.options.get().first().unwrap().0.to_string()),
+        );
     });
 
     view! { cx,
@@ -179,9 +197,9 @@ pub struct DateTimeFilterProps<'a> {
 pub fn DateTimeFilter<'a, G: Html>(cx: Scope<'a>, props: DateTimeFilterProps<'a>) -> View<G> {
     const FORMAT_STR: &str = "%FT%R";
 
-    let curr_datetime_str = format!("{}", Local::now().format(FORMAT_STR));
-    let value_from = create_signal(cx, curr_datetime_str.clone());
-    let value_to = create_signal(cx, curr_datetime_str);
+    let curr_datetime_str = || format!("{}", Local::now().format(FORMAT_STR));
+    let value_from = create_signal(cx, curr_datetime_str());
+    let value_to = create_signal(cx, curr_datetime_str());
 
     let enabled_from = create_signal(cx, false);
     let enabled_to = create_signal(cx, false);
@@ -206,7 +224,7 @@ pub fn DateTimeFilter<'a, G: Html>(cx: Scope<'a>, props: DateTimeFilterProps<'a>
         match parse(*enabled.get(), &value_str.get()) {
             Ok(x) => {
                 valid.set(true);
-                value_datetime.set(x);
+                value_datetime.set_silent(x);
             }
             Err(_) => {
                 valid.set(false);
@@ -216,6 +234,24 @@ pub fn DateTimeFilter<'a, G: Html>(cx: Scope<'a>, props: DateTimeFilterProps<'a>
     create_effect(cx, move || {
         update(enabled_from, value_from, valid_from, props.value_from);
         update(enabled_to, value_to, valid_to, props.value_to);
+    });
+    create_effect(cx, move || {
+        let value_from_date = props.value_from.get();
+        enabled_from.set(value_from_date.is_some());
+        value_from.set(
+            value_from_date
+                .map(|x| format!("{}", x.format(FORMAT_STR)))
+                .unwrap_or_else(curr_datetime_str),
+        );
+    });
+    create_effect(cx, move || {
+        let value_to_date = props.value_to.get();
+        enabled_to.set(value_to_date.is_some());
+        value_to.set(
+            value_to_date
+                .map(|x| format!("{}", x.format(FORMAT_STR)))
+                .unwrap_or_else(curr_datetime_str),
+        );
     });
     create_effect(cx, || props.valid.set(*valid_from.get() && *valid_to.get()));
 
@@ -287,7 +323,7 @@ where
         match parse(*enabled.get(), &value_str.get()) {
             Ok(x) => {
                 valid.set(true);
-                value_num.set(x);
+                value_num.set_silent(x);
             }
             Err(_) => {
                 valid.set(false);
@@ -297,6 +333,24 @@ where
     create_effect(cx, move || {
         update(enabled_from, value_from, valid_from, props.value_from);
         update(enabled_to, value_to, valid_to, props.value_to);
+    });
+    create_effect(cx, move || {
+        let value_from_num = props.value_from.get();
+        enabled_from.set(value_from_num.is_some());
+        value_from.set(
+            value_from_num
+                .map(|x| x.to_string())
+                .unwrap_or_else(|| props.min.to_string()),
+        );
+    });
+    create_effect(cx, move || {
+        let value_to_num = props.value_to.get();
+        enabled_to.set(value_to_num.is_some());
+        value_to.set(
+            value_to_num
+                .map(|x| x.to_string())
+                .unwrap_or_else(|| props.max.to_string()),
+        );
     });
     create_effect(cx, || props.valid.set(*valid_from.get() && *valid_to.get()));
 
@@ -339,7 +393,10 @@ where
     G: Html,
 {
     let value_str = create_signal(cx, props.value.get().to_string());
-    create_effect(cx, || props.value.set(value_str.get().parse().unwrap()));
+    create_effect(cx, || {
+        props.value.set_silent(value_str.get().parse().unwrap())
+    });
+    create_effect(cx, || value_str.set(props.value.get().to_string()));
 
     view! { cx,
         fieldset {
@@ -373,7 +430,10 @@ pub fn PathFilter<'a, G: Html>(cx: Scope<'a>, props: PathFilterProps<'a>) -> Vie
     create_effect(cx, || {
         props
             .value
-            .set(enabled.get().then(|| value.get().as_ref().clone()))
+            .set_silent(enabled.get().then(|| value.get().as_ref().clone()))
+    });
+    create_effect(cx, || {
+        value.set((*props.value.get()).clone().unwrap_or_default())
     });
 
     let select_directory = move |_| {

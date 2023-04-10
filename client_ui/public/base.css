@@ -91,6 +91,15 @@ aside {
     flex-shrink: 0;
 }
 
+div#saved_requests {
+    display: flex;
+    justify-content: space-around;
+}
+
+div#saved_requests>button {
+    margin-right: 0;
+}
+
 div.filter_field {
     display: flex;
     justify-content: space-evenly;

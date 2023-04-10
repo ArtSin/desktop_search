@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use common_lib::search::ContentTypeRequestItem;
 use sycamore::prelude::*;
 use uuid::Uuid;
@@ -10,7 +12,7 @@ pub struct ContentTypeItem<'a> {
     pub type_: &'static str,
     pub enabled: &'a Signal<bool>,
     pub indeterminate: &'a Signal<bool>,
-    pub subtypes: &'a ReadSignal<Vec<ContentTypeSubitem<'a>>>,
+    pub subtypes: &'a Signal<Vec<ContentTypeSubitem<'a>>>,
     pub id: Uuid,
 }
 
@@ -71,7 +73,7 @@ pub struct ContentTypeFilterProps<'a> {
     pub disabled: &'a Signal<bool>,
 }
 
-pub fn content_type_filter_items(cx: Scope) -> &ReadSignal<Vec<ContentTypeItem<'_>>> {
+pub fn content_type_filter_items(cx: Scope) -> &Signal<Vec<ContentTypeItem<'_>>> {
     create_signal(
         cx,
         vec![
@@ -276,7 +278,7 @@ pub fn content_type_filter_items(cx: Scope) -> &ReadSignal<Vec<ContentTypeItem<'
     )
 }
 
-pub fn content_type_request_items<'a>(
+pub fn get_content_type_request_items<'a>(
     items: &'a ReadSignal<Vec<ContentTypeItem<'a>>>,
 ) -> Vec<ContentTypeRequestItem> {
     items
@@ -315,6 +317,72 @@ pub fn content_type_request_items<'a>(
             }
         })
         .collect()
+}
+
+pub fn load_from_content_type_request_items<'a>(
+    request_items: &[ContentTypeRequestItem],
+    items: &'a Signal<Vec<ContentTypeItem<'a>>>,
+) {
+    let items_value = items.get();
+    let items_hm: HashMap<_, _> = items_value.iter().map(|x| (x.type_, x)).collect();
+    let subitems_value: Vec<_> = items_value.iter().map(|x| (x, x.subtypes.get())).collect();
+    let subitems_hm: HashMap<_, _> = subitems_value
+        .iter()
+        .flat_map(|(x, subtypes)| {
+            subtypes
+                .iter()
+                .flat_map(move |y| y.essence.iter().map(move |&e| (e, (*x, y))))
+        })
+        .collect();
+
+    for req_item in request_items {
+        match req_item {
+            ContentTypeRequestItem::IncludeType { type_ } => {
+                let item = items_hm.get(type_.as_str()).unwrap();
+                item.enabled.set(true);
+                item.indeterminate.set(false);
+                for subitem in item.subtypes.get().iter() {
+                    subitem.enabled.set(true);
+                }
+            }
+            ContentTypeRequestItem::ExcludeType { type_ } => {
+                let item = items_hm.get(type_.as_str()).unwrap();
+                item.enabled.set(false);
+                item.indeterminate.set(false);
+                for subitem in item.subtypes.get().iter() {
+                    subitem.enabled.set(false);
+                }
+            }
+            ContentTypeRequestItem::IncludeSubtypes { subtypes } => {
+                let mut is_first = true;
+                for subtype in subtypes {
+                    let (item, subitem) = subitems_hm.get(subtype.as_str()).unwrap();
+                    if is_first {
+                        item.enabled.set(false);
+                        item.indeterminate.set(true);
+                        for subitem in item.subtypes.get().iter() {
+                            subitem.enabled.set(false);
+                        }
+                        is_first = false;
+                    }
+                    subitem.enabled.set(true);
+                }
+            }
+            ContentTypeRequestItem::ExcludeSubtypes { type_, subtypes } => {
+                let item = items_hm.get(type_.as_str()).unwrap();
+                item.enabled.set(false);
+                item.indeterminate.set(true);
+                for subitem in item.subtypes.get().iter() {
+                    subitem.enabled.set(true);
+                }
+
+                for subtype in subtypes {
+                    let (_, subitem) = subitems_hm.get(subtype.as_str()).unwrap();
+                    subitem.enabled.set(false);
+                }
+            }
+        }
+    }
 }
 
 #[component]

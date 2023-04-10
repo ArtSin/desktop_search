@@ -111,6 +111,8 @@ async fn main() {
         .route("/open_path", post(actions::open_path))
         .route("/pick_file", post(actions::pick_file))
         .route("/pick_folder", post(actions::pick_folder))
+        .route("/open_request", post(actions::open_request))
+        .route("/save_request", post(actions::save_request))
         .route("/file", get(file_server::get_file))
         .route("/document_content", get(file_server::get_document_content))
         .fallback(file_server::get_client_file)

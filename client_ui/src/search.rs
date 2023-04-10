@@ -12,11 +12,12 @@ use wasm_bindgen::JsValue;
 use web_sys::window;
 
 use crate::{
-    app::{fetch, widgets::StatusDialogState},
+    app::{fetch, fetch_empty, widgets::StatusDialogState},
     search::{
         filters::{
             content_type::{
-                content_type_filter_items, content_type_request_items, ContentTypeFilter,
+                content_type_filter_items, get_content_type_request_items,
+                load_from_content_type_request_items, ContentTypeFilter,
             },
             CheckboxFilter, DateTimeFilter, NumberFilter, RadioFilter, RangeWidget,
         },
@@ -58,6 +59,14 @@ fn get_local_file_url<P: AsRef<Path>>(path: P, content_type: Option<&str>, thumb
 
 async fn pick_file() -> Result<PickFileResult, JsValue> {
     fetch("/pick_file", "POST", None::<&()>).await
+}
+
+async fn open_request() -> Result<Option<SearchRequest>, JsValue> {
+    fetch("/open_request", "POST", None::<&()>).await
+}
+
+async fn save_request(search_request: &SearchRequest) -> Result<(), JsValue> {
+    fetch_empty("/save_request", "POST", Some(search_request)).await
 }
 
 async fn search(search_request: &SearchRequest) -> Result<SearchResponse, JsValue> {
@@ -141,46 +150,136 @@ pub fn Search<'a, G: Html>(
         });
     };
 
+    let get_search_request = |page: u32| {
+        let search_query = match *query_type.get() {
+            QueryType::Text => common_lib::search::QueryType::Text(TextQuery {
+                query: (*query.get()).clone(),
+                content_enabled: *content_enabled.get(),
+                text_search_enabled: *text_search_enabled.get(),
+                image_search_enabled: *image_search_enabled.get(),
+                reranking_enabled: *reranking_enabled.get(),
+                text_search_pages: *text_search_pages.get(),
+                image_search_pages: *image_search_pages.get(),
+                query_coeff: *query_coeff.get(),
+                text_search_coeff: *text_search_coeff.get(),
+                image_search_coeff: *image_search_coeff.get(),
+                reranking_coeff: *reranking_coeff.get(),
+            }),
+            QueryType::Image => common_lib::search::QueryType::Image(ImageQuery {
+                image_path: (*query_image_path.get()).clone(),
+                image_search_pages: *image_search_pages.get(),
+            }),
+        };
+        SearchRequest {
+            page,
+            query: search_query,
+            path_prefix: path_prefix.get().as_ref().clone(),
+            content_type: (!*content_type_disabled.get())
+                .then(|| get_content_type_request_items(content_type_items)),
+            path_enabled: *path_enabled.get(),
+            hash_enabled: *hash_enabled.get(),
+            modified_from: *modified_from.get(),
+            modified_to: *modified_to.get(),
+            size_from: size_from.get().map(|x| (x * 1024.0 * 1024.0) as u64),
+            size_to: size_to.get().map(|x| (x * 1024.0 * 1024.0) as u64),
+            image_data: image_filters_data.get().to_request(),
+            multimedia_data: multimedia_filters_data.get().to_request(),
+            document_data: document_filters_data.get().to_request(),
+        }
+    };
+
+    let load_from_search_request = |search_request: SearchRequest| {
+        match search_request.query {
+            common_lib::search::QueryType::Text(text_query) => {
+                query.set(text_query.query);
+                content_enabled.set(text_query.content_enabled);
+                text_search_enabled.set(text_query.text_search_enabled);
+                image_search_enabled.set(text_query.image_search_enabled);
+                reranking_enabled.set(text_query.reranking_enabled);
+                text_search_pages.set(text_query.text_search_pages);
+                image_search_pages.set(text_query.image_search_pages);
+                query_coeff.set(text_query.query_coeff);
+                text_search_coeff.set(text_query.text_search_coeff);
+                image_search_coeff.set(text_query.image_search_coeff);
+                reranking_coeff.set(text_query.reranking_coeff);
+            }
+            common_lib::search::QueryType::Image(image_query) => {
+                query_image_path.set(image_query.image_path);
+                image_search_pages.set(image_query.image_search_pages);
+            }
+        };
+        path_prefix.set(search_request.path_prefix);
+        match search_request.content_type {
+            Some(x) => {
+                content_type_disabled.set(false);
+                load_from_content_type_request_items(&x, content_type_items);
+            }
+            None => content_type_disabled.set(true),
+        }
+        path_enabled.set(search_request.path_enabled);
+        hash_enabled.set(search_request.hash_enabled);
+        modified_from.set(search_request.modified_from);
+        modified_to.set(search_request.modified_to);
+        size_from.set(
+            search_request
+                .size_from
+                .map(|x| (x as f64) / 1024.0 / 1024.0),
+        );
+        size_to.set(search_request.size_to.map(|x| (x as f64) / 1024.0 / 1024.0));
+        image_filters_data
+            .modify()
+            .update_from_request(search_request.image_data);
+        multimedia_filters_data
+            .modify()
+            .update_from_request(search_request.multimedia_data);
+        document_filters_data
+            .modify()
+            .update_from_request(search_request.document_data);
+    };
+
+    let open_search_request = move |_| {
+        spawn_local_scoped(cx, async move {
+            status_dialog_state.set(StatusDialogState::Loading);
+
+            match open_request().await {
+                Ok(res) => {
+                    if let Some(search_request) = res {
+                        load_from_search_request(search_request);
+                    }
+                    status_dialog_state.set(StatusDialogState::None);
+                }
+                Err(e) => {
+                    status_dialog_state.set(StatusDialogState::Error(format!(
+                        "❌ Ошибка открытия запроса: {e:#?}",
+                    )));
+                }
+            }
+        });
+    };
+    let save_search_request = move |_| {
+        let search_request = get_search_request(0);
+        spawn_local_scoped(cx, async move {
+            status_dialog_state.set(StatusDialogState::Loading);
+
+            match save_request(&search_request).await {
+                Ok(_) => {
+                    status_dialog_state.set(StatusDialogState::None);
+                }
+                Err(e) => {
+                    status_dialog_state.set(StatusDialogState::Error(format!(
+                        "❌ Ошибка сохранения запроса: {e:#?}",
+                    )));
+                }
+            }
+        });
+    };
+
     let search = move |page: u32| {
         spawn_local_scoped(cx, async move {
             no_searches.set(false);
             status_dialog_state.set(StatusDialogState::Loading);
 
-            let search_query = match *query_type.get() {
-                QueryType::Text => common_lib::search::QueryType::Text(TextQuery {
-                    query: (*query.get()).clone(),
-                    content_enabled: *content_enabled.get(),
-                    text_search_enabled: *text_search_enabled.get(),
-                    image_search_enabled: *image_search_enabled.get(),
-                    reranking_enabled: *reranking_enabled.get(),
-                    text_search_pages: *text_search_pages.get(),
-                    image_search_pages: *image_search_pages.get(),
-                    query_coeff: *query_coeff.get(),
-                    text_search_coeff: *text_search_coeff.get(),
-                    image_search_coeff: *image_search_coeff.get(),
-                    reranking_coeff: *reranking_coeff.get(),
-                }),
-                QueryType::Image => common_lib::search::QueryType::Image(ImageQuery {
-                    image_path: (*query_image_path.get()).clone(),
-                    image_search_pages: *image_search_pages.get(),
-                }),
-            };
-            let search_request = SearchRequest {
-                page,
-                query: search_query,
-                path_prefix: path_prefix.get().as_ref().clone(),
-                content_type: (!*content_type_disabled.get())
-                    .then(|| content_type_request_items(content_type_items)),
-                path_enabled: *path_enabled.get(),
-                hash_enabled: *hash_enabled.get(),
-                modified_from: *modified_from.get(),
-                modified_to: *modified_to.get(),
-                size_from: size_from.get().map(|x| (x * 1024.0 * 1024.0) as u64),
-                size_to: size_to.get().map(|x| (x * 1024.0 * 1024.0) as u64),
-                image_data: image_filters_data.get().to_request(),
-                multimedia_data: multimedia_filters_data.get().to_request(),
-                document_data: document_filters_data.get().to_request(),
-            };
+            let search_request = get_search_request(page);
 
             match search(&search_request).await {
                 Ok(x) => {
@@ -238,6 +337,13 @@ pub fn Search<'a, G: Html>(
         div(class="main_container") {
             aside(style={if *display_filters.get() { "display: block;" } else { "display: none;" }}) {
                 form(id="search", on:submit=search_without_page, action="javascript:void(0);") {
+                    fieldset {
+                        legend { "Сохранённые запросы" }
+                        div(id="saved_requests") {
+                            button(form="search", type="button", on:click=open_search_request) { "Открыть" }
+                            button(form="search", type="button", on:click=save_search_request) { "Сохранить" }
+                        }
+                    }
                     fieldset {
                         legend { "Тип запроса" }
                         RadioFilter(text="По тексту", name="query_type", id="query_type_text",

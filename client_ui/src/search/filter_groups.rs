@@ -10,6 +10,7 @@ use super::filters::{
     SelectOptionFilter,
 };
 
+#[derive(Clone)]
 pub struct ImageFiltersData<'a> {
     image_make_enabled: &'a Signal<bool>,
     image_model_enabled: &'a Signal<bool>,
@@ -133,6 +134,29 @@ impl<'a> ImageFiltersData<'a> {
             flash_fired: *self.flash_fired.get(),
         }
     }
+
+    pub fn update_from_request(&mut self, request: ImageSearchRequest) {
+        self.image_make_enabled.set(request.image_make_enabled);
+        self.image_model_enabled.set(request.image_model_enabled);
+        self.image_software_enabled
+            .set(request.image_software_enabled);
+        self.width_from.set(request.width_from);
+        self.width_to.set(request.width_to);
+        self.height_from.set(request.height_from);
+        self.height_to.set(request.height_to);
+        self.resolution_unit.set(request.resolution_unit);
+        self.x_resolution_from.set(request.x_resolution_from);
+        self.x_resolution_to.set(request.x_resolution_to);
+        self.y_resolution_from.set(request.y_resolution_from);
+        self.y_resolution_to.set(request.y_resolution_to);
+        self.f_number_from.set(request.f_number_from);
+        self.f_number_to.set(request.f_number_to);
+        self.focal_length_from.set(request.focal_length_from);
+        self.focal_length_to.set(request.focal_length_to);
+        self.exposure_time_from.set(request.exposure_time_from);
+        self.exposure_time_to.set(request.exposure_time_to);
+        self.flash_fired.set(request.flash_fired);
+    }
 }
 
 #[component(inline_props)]
@@ -205,6 +229,7 @@ pub fn ImageFilters<'a, G: Html>(cx: Scope<'a>, data: &'a Signal<ImageFiltersDat
     }
 }
 
+#[derive(Clone)]
 pub struct MultimediaFiltersData<'a> {
     artist_enabled: &'a Signal<bool>,
     album_enabled: &'a Signal<bool>,
@@ -271,6 +296,21 @@ impl<'a> MultimediaFiltersData<'a> {
             audio_channel_type: *self.audio_channel_type.get(),
         }
     }
+
+    pub fn update_from_request(&mut self, request: MultimediaSearchRequest) {
+        self.artist_enabled.set(request.artist_enabled);
+        self.album_enabled.set(request.album_enabled);
+        self.genre_enabled.set(request.genre_enabled);
+        self.track_number_enabled.set(request.track_number_enabled);
+        self.disc_number_enabled.set(request.disc_number_enabled);
+        self.release_date_enabled.set(request.release_date_enabled);
+        self.duration_min_from.set(request.duration_min_from);
+        self.duration_min_to.set(request.duration_min_to);
+        self.audio_sample_rate_from
+            .set(request.audio_sample_rate_from);
+        self.audio_sample_rate_to.set(request.audio_sample_rate_to);
+        self.audio_channel_type.set(request.audio_channel_type);
+    }
 }
 
 #[component(inline_props)]
@@ -326,6 +366,7 @@ pub fn MultimediaFilters<'a, G: Html>(
     }
 }
 
+#[derive(Clone)]
 pub struct DocumentFiltersData<'a> {
     title_enabled: &'a Signal<bool>,
     creator_enabled: &'a Signal<bool>,
@@ -411,6 +452,21 @@ impl<'a> DocumentFiltersData<'a> {
             num_characters_from: *self.num_characters_from.get(),
             num_characters_to: *self.num_characters_to.get(),
         }
+    }
+
+    pub fn update_from_request(&mut self, request: DocumentSearchRequest) {
+        self.title_enabled.set(request.title_enabled);
+        self.creator_enabled.set(request.creator_enabled);
+        self.doc_created_from.set(request.doc_created_from);
+        self.doc_created_to.set(request.doc_created_to);
+        self.doc_modified_from.set(request.doc_modified_from);
+        self.doc_modified_to.set(request.doc_modified_to);
+        self.num_pages_from.set(request.num_pages_from);
+        self.num_pages_to.set(request.num_pages_to);
+        self.num_words_from.set(request.num_words_from);
+        self.num_words_to.set(request.num_words_to);
+        self.num_characters_from.set(request.num_characters_from);
+        self.num_characters_to.set(request.num_characters_to);
     }
 }
 
