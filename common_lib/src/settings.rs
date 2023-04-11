@@ -81,7 +81,7 @@ impl Default for NNServerSettings {
             clip_text_max_delay_ms: 100,
             minilm_text_batch_size: 32,
             minilm_text_max_delay_ms: 100,
-            minilm_rerank_batch_size: 32,
+            minilm_rerank_batch_size: 8,
             minilm_rerank_max_delay_ms: 100,
             max_sentences: 100,
             window_size: 100,

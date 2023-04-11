@@ -90,9 +90,9 @@ pub fn Search<'a, G: Html>(
     let text_search_pages = create_signal(cx, 1);
     let image_search_pages = create_signal(cx, 1);
     let query_coeff = create_signal(cx, 1.0);
-    let text_search_coeff = create_signal(cx, 2.0);
-    let image_search_coeff = create_signal(cx, 2.0);
-    let reranking_coeff = create_signal(cx, 1.0);
+    let text_search_coeff = create_signal(cx, 7.5);
+    let image_search_coeff = create_signal(cx, 7.5);
+    let reranking_coeff = create_signal(cx, 1.1);
 
     let display_filters = create_signal(cx, true);
     let path_prefix = create_signal(cx, None);

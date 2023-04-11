@@ -393,8 +393,11 @@ where
     G: Html,
 {
     let value_str = create_signal(cx, props.value.get().to_string());
+    let value_formatted = create_signal(cx, format!("{:.1}", props.value.get()));
     create_effect(cx, || {
-        props.value.set_silent(value_str.get().parse().unwrap())
+        let val = value_str.get().parse().unwrap();
+        value_formatted.set(format!("{:.1}", val));
+        props.value.set_silent(val);
     });
     create_effect(cx, || value_str.set(props.value.get().to_string()));
 
@@ -402,7 +405,7 @@ where
         fieldset {
             legend { (props.legend) }
             div(class="filter_field") {
-                label(for=props.id) { (format!("{:.1}", props.value.get())) " " }
+                label(for=props.id) { (value_formatted.get()) " " }
                 input(type="range", min=props.min, max=props.max, step=props.step, bind:value=value_str) {}
             }
         }
