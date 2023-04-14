@@ -126,6 +126,13 @@ pub fn Search<'a, G: Html>(
     let pages = create_signal(cx, Vec::new());
     let suggestion = create_signal(cx, None);
 
+    // Update search configuration on settings change
+    create_effect(cx, || {
+        text_search_enabled.set(settings.get().nn_server.text_search_enabled);
+        image_search_enabled.set(settings.get().nn_server.image_search_enabled);
+        reranking_enabled.set(settings.get().nn_server.reranking_enabled);
+    });
+
     let toggle_filters = move |_| {
         display_filters.set(!*display_filters.get());
     };
