@@ -29,10 +29,13 @@ with open(sys.argv[1], "r") as queries_f:
                     .replace("?", "")
                     .replace("(", "")
                     .replace(")", "")
+                    .replace(" - ", " ")
+                    .replace("---", " ")
                     .replace("/", " ")
                     .split()
                 ),
-                stemming=0,
+                stemming=1,
+                # stemlang="russian",
             )
 
             results = query.fetchmany(MAX_RANK)
