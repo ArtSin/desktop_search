@@ -7,7 +7,7 @@ use axum::{
     routing::{get, post},
     BoxError, Router,
 };
-use common_lib::settings::{NNServerSettings, Settings};
+use common_lib::settings::{NNDevice, NNServerSettings, NNSettings, Settings};
 use ndarray::{Array, ArrayD, Dimension};
 use onnxruntime::{environment::Environment, session::SessionBuilder, LoggingLevel};
 use serde::Serialize;
@@ -53,12 +53,11 @@ impl Embedding {
 /// Configure ONNX Runtime to use CPU or CUDA depending on the setting
 fn set_device<'a>(
     session_builder: SessionBuilder<'a>,
-    settings: &'a NNServerSettings,
+    settings: &'a NNSettings,
 ) -> onnxruntime::Result<SessionBuilder<'a>> {
-    if settings.cuda_enabled {
-        session_builder.use_cuda(0)
-    } else {
-        Ok(session_builder)
+    match settings.device {
+        NNDevice::CUDA => session_builder.use_cuda(0),
+        NNDevice::CPU => Ok(session_builder),
     }
 }
 

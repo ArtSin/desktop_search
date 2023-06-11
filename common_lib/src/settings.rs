@@ -1,5 +1,6 @@
-use std::{net::SocketAddr, path::PathBuf};
+use std::{net::SocketAddr, path::PathBuf, str::FromStr};
 
+use derive_more::Display;
 use serde::{Deserialize, Serialize};
 use url::Url;
 
@@ -45,6 +46,39 @@ impl Default for Settings {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Display, Serialize, Deserialize)]
+pub enum NNDevice {
+    #[display(fmt = "cpu")]
+    CPU,
+    #[display(fmt = "cuda")]
+    CUDA,
+}
+
+impl Default for NNDevice {
+    fn default() -> Self {
+        Self::CPU
+    }
+}
+
+impl FromStr for NNDevice {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "cpu" => Ok(Self::CPU),
+            "cuda" => Ok(Self::CUDA),
+            _ => Err(anyhow::anyhow!("Unknown device")),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct NNSettings {
+    pub device: NNDevice,
+    pub batch_size: usize,
+    pub max_delay_ms: u64,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct NNServerSettings {
@@ -52,15 +86,10 @@ pub struct NNServerSettings {
     pub text_search_enabled: bool,
     pub image_search_enabled: bool,
     pub reranking_enabled: bool,
-    pub cuda_enabled: bool,
-    pub clip_image_batch_size: usize,
-    pub clip_image_max_delay_ms: u64,
-    pub clip_text_batch_size: usize,
-    pub clip_text_max_delay_ms: u64,
-    pub minilm_text_batch_size: usize,
-    pub minilm_text_max_delay_ms: u64,
-    pub minilm_rerank_batch_size: usize,
-    pub minilm_rerank_max_delay_ms: u64,
+    pub clip_image: NNSettings,
+    pub clip_text: NNSettings,
+    pub minilm_text: NNSettings,
+    pub minilm_rerank: NNSettings,
     pub max_sentences: u32,
     pub window_size: u32,
     pub window_step: u32,
@@ -74,15 +103,26 @@ impl Default for NNServerSettings {
             text_search_enabled: true,
             image_search_enabled: true,
             reranking_enabled: true,
-            cuda_enabled: true,
-            clip_image_batch_size: 16,
-            clip_image_max_delay_ms: 100,
-            clip_text_batch_size: 32,
-            clip_text_max_delay_ms: 100,
-            minilm_text_batch_size: 32,
-            minilm_text_max_delay_ms: 100,
-            minilm_rerank_batch_size: 8,
-            minilm_rerank_max_delay_ms: 100,
+            clip_image: NNSettings {
+                device: NNDevice::CUDA,
+                batch_size: 16,
+                max_delay_ms: 100,
+            },
+            clip_text: NNSettings {
+                device: NNDevice::CUDA,
+                batch_size: 32,
+                max_delay_ms: 100,
+            },
+            minilm_text: NNSettings {
+                device: NNDevice::CUDA,
+                batch_size: 32,
+                max_delay_ms: 100,
+            },
+            minilm_rerank: NNSettings {
+                device: NNDevice::CUDA,
+                batch_size: 8,
+                max_delay_ms: 100,
+            },
             max_sentences: 100,
             window_size: 100,
             window_step: 75,

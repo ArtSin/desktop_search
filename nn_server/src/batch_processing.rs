@@ -3,6 +3,7 @@ use std::{
     time::{Duration, Instant},
 };
 
+use common_lib::settings::NNSettings;
 use tokio::{
     sync::{mpsc, oneshot},
     time::sleep,
@@ -20,9 +21,7 @@ pub enum Command<In, Out> {
 
 /// Start batch process with given settings and processing function, returns command sender
 pub fn start_batch_process<In, Out, F>(
-    batch_size: usize,
-    max_delay: Duration,
-    max_capacity: usize,
+    settings: &NNSettings,
     process: F,
 ) -> mpsc::Sender<Command<In, Out>>
 where
@@ -30,6 +29,10 @@ where
     Out: Send + 'static,
     F: Fn(Vec<In>) -> Vec<Out> + Send + Copy + 'static,
 {
+    let batch_size = settings.batch_size;
+    let max_delay = Duration::from_millis(settings.max_delay_ms);
+    let max_capacity = 2 * settings.batch_size;
+
     let (tx, mut rx) = mpsc::channel(max_capacity);
     // Start task for processing commands
     tokio::spawn(async move {

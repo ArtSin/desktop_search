@@ -1,5 +1,3 @@
-use std::time::Duration;
-
 use axum::{extract::Query, http::StatusCode, Json};
 use common_lib::{settings::NNServerSettings, BatchRequest};
 use once_cell::sync::OnceCell;
@@ -40,7 +38,7 @@ pub fn initialize_model(
 ) -> anyhow::Result<()> {
     MODEL
         .set(
-            set_device(environment.new_session_builder()?, settings)?
+            set_device(environment.new_session_builder()?, &settings.minilm_rerank)?
                 .with_graph_optimization_level(GraphOptimizationLevel::All)?
                 .with_model_from_file(
                     PATH_PREFIX.to_owned() + "models/mMiniLM-L6-v2-mmarco-v2/model.onnx",
@@ -73,12 +71,9 @@ pub fn initialize_model(
         )
         .unwrap_or_log();
     BATCH_SENDER
-        .set(start_batch_process(
-            settings.minilm_rerank_batch_size,
-            Duration::from_millis(settings.minilm_rerank_max_delay_ms),
-            2 * settings.minilm_rerank_batch_size,
-            |batch| log_processing_function("MiniLM/Rerank", compute_embeddings, batch),
-        ))
+        .set(start_batch_process(&settings.minilm_rerank, |batch| {
+            log_processing_function("MiniLM/Rerank", compute_embeddings, batch)
+        }))
         .unwrap_or_log();
     Ok(())
 }

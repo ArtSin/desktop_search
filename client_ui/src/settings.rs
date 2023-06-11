@@ -8,7 +8,8 @@ use wasm_bindgen::JsValue;
 use crate::app::{fetch, fetch_empty, widgets::StatusDialogState};
 
 use self::widgets::{
-    CheckboxSetting, DirectoryItem, DirectoryList, NumberSetting, SimpleTextSetting, TextSetting,
+    CheckboxSetting, DirectoryItem, DirectoryList, NNSetting, NNSettingsData, NumberSetting,
+    SimpleTextSetting, TextSetting,
 };
 
 mod widgets;
@@ -89,19 +90,22 @@ pub fn Settings<'a, G: Html>(
     let text_search_enabled = create_signal(cx, settings.get().nn_server.text_search_enabled);
     let image_search_enabled = create_signal(cx, settings.get().nn_server.image_search_enabled);
     let reranking_enabled = create_signal(cx, settings.get().nn_server.reranking_enabled);
-    let cuda_enabled = create_signal(cx, settings.get().nn_server.cuda_enabled);
-    let clip_image_batch_size = create_signal(cx, settings.get().nn_server.clip_image_batch_size);
-    let clip_image_max_delay_ms =
-        create_signal(cx, settings.get().nn_server.clip_image_max_delay_ms);
-    let clip_text_batch_size = create_signal(cx, settings.get().nn_server.clip_text_batch_size);
-    let clip_text_max_delay_ms = create_signal(cx, settings.get().nn_server.clip_text_max_delay_ms);
-    let minilm_text_batch_size = create_signal(cx, settings.get().nn_server.minilm_text_batch_size);
-    let minilm_text_max_delay_ms =
-        create_signal(cx, settings.get().nn_server.minilm_text_max_delay_ms);
-    let minilm_rerank_batch_size =
-        create_signal(cx, settings.get().nn_server.minilm_rerank_batch_size);
-    let minilm_rerank_max_delay_ms =
-        create_signal(cx, settings.get().nn_server.minilm_rerank_max_delay_ms);
+    let clip_image_data = create_signal(
+        cx,
+        NNSettingsData::new(cx, &settings.get().nn_server.clip_image),
+    );
+    let clip_text_data = create_signal(
+        cx,
+        NNSettingsData::new(cx, &settings.get().nn_server.clip_text),
+    );
+    let minilm_text_data = create_signal(
+        cx,
+        NNSettingsData::new(cx, &settings.get().nn_server.minilm_text),
+    );
+    let minilm_rerank_data = create_signal(
+        cx,
+        NNSettingsData::new(cx, &settings.get().nn_server.minilm_rerank),
+    );
     let max_sentences = create_signal(cx, settings.get().nn_server.max_sentences);
     let window_size = create_signal(cx, settings.get().nn_server.window_size);
     let window_step = create_signal(cx, settings.get().nn_server.window_step);
@@ -119,14 +123,6 @@ pub fn Settings<'a, G: Html>(
     let results_per_page_valid = create_signal(cx, true);
     let knn_candidates_multiplier_valid = create_signal(cx, true);
     let nn_server_address_valid = create_signal(cx, true);
-    let clip_image_batch_size_valid = create_signal(cx, true);
-    let clip_image_max_delay_ms_valid = create_signal(cx, true);
-    let clip_text_batch_size_valid = create_signal(cx, true);
-    let clip_text_max_delay_ms_valid = create_signal(cx, true);
-    let minilm_text_batch_size_valid = create_signal(cx, true);
-    let minilm_text_max_delay_ms_valid = create_signal(cx, true);
-    let minilm_rerank_batch_size_valid = create_signal(cx, true);
-    let minilm_rerank_max_delay_ms_valid = create_signal(cx, true);
     let max_sentences_valid = create_signal(cx, true);
     let window_size_valid = create_signal(cx, true);
     let window_step_valid = create_signal(cx, true);
@@ -143,14 +139,10 @@ pub fn Settings<'a, G: Html>(
             || !*results_per_page_valid.get()
             || !*knn_candidates_multiplier_valid.get()
             || !*nn_server_address_valid.get()
-            || !*clip_image_batch_size_valid.get()
-            || !*clip_image_max_delay_ms_valid.get()
-            || !*clip_text_batch_size_valid.get()
-            || !*clip_text_max_delay_ms_valid.get()
-            || !*minilm_text_batch_size_valid.get()
-            || !*minilm_text_max_delay_ms_valid.get()
-            || !*minilm_rerank_batch_size_valid.get()
-            || !*minilm_rerank_max_delay_ms_valid.get()
+            || *clip_image_data.get().any_invalid.get()
+            || *clip_text_data.get().any_invalid.get()
+            || *minilm_text_data.get().any_invalid.get()
+            || *minilm_rerank_data.get().any_invalid.get()
             || !*max_sentences_valid.get()
             || !*window_size_valid.get()
             || !*window_step_valid.get()
@@ -177,15 +169,18 @@ pub fn Settings<'a, G: Html>(
         text_search_enabled.set(settings.get().nn_server.text_search_enabled);
         image_search_enabled.set(settings.get().nn_server.image_search_enabled);
         reranking_enabled.set(settings.get().nn_server.reranking_enabled);
-        cuda_enabled.set(settings.get().nn_server.cuda_enabled);
-        clip_image_batch_size.set(settings.get().nn_server.clip_image_batch_size);
-        clip_image_max_delay_ms.set(settings.get().nn_server.clip_image_max_delay_ms);
-        clip_text_batch_size.set(settings.get().nn_server.clip_text_batch_size);
-        clip_text_max_delay_ms.set(settings.get().nn_server.clip_text_max_delay_ms);
-        minilm_text_batch_size.set(settings.get().nn_server.minilm_text_batch_size);
-        minilm_text_max_delay_ms.set(settings.get().nn_server.minilm_text_max_delay_ms);
-        minilm_rerank_batch_size.set(settings.get().nn_server.minilm_rerank_batch_size);
-        minilm_rerank_max_delay_ms.set(settings.get().nn_server.minilm_rerank_max_delay_ms);
+        clip_image_data
+            .modify()
+            .update_from_settings(settings.get().nn_server.clip_image.clone());
+        clip_text_data
+            .modify()
+            .update_from_settings(settings.get().nn_server.clip_text.clone());
+        minilm_text_data
+            .modify()
+            .update_from_settings(settings.get().nn_server.minilm_text.clone());
+        minilm_rerank_data
+            .modify()
+            .update_from_settings(settings.get().nn_server.minilm_rerank.clone());
         max_sentences.set(settings.get().nn_server.max_sentences);
         window_size.set(settings.get().nn_server.window_size);
         window_step.set(settings.get().nn_server.window_step);
@@ -240,15 +235,10 @@ pub fn Settings<'a, G: Html>(
                     text_search_enabled: *text_search_enabled.get(),
                     image_search_enabled: *image_search_enabled.get(),
                     reranking_enabled: *reranking_enabled.get(),
-                    cuda_enabled: *cuda_enabled.get(),
-                    clip_image_batch_size: *clip_image_batch_size.get(),
-                    clip_image_max_delay_ms: *clip_image_max_delay_ms.get(),
-                    clip_text_batch_size: *clip_text_batch_size.get(),
-                    clip_text_max_delay_ms: *clip_text_max_delay_ms.get(),
-                    minilm_text_batch_size: *minilm_text_batch_size.get(),
-                    minilm_text_max_delay_ms: *minilm_text_max_delay_ms.get(),
-                    minilm_rerank_batch_size: *minilm_rerank_batch_size.get(),
-                    minilm_rerank_max_delay_ms: *minilm_rerank_max_delay_ms.get(),
+                    clip_image: clip_image_data.get().to_settings(),
+                    clip_text: clip_text_data.get().to_settings(),
+                    minilm_text: minilm_text_data.get().to_settings(),
+                    minilm_rerank: minilm_rerank_data.get().to_settings(),
                     max_sentences: *max_sentences.get(),
                     window_size: *window_size.get(),
                     window_step: *window_step.get(),
@@ -303,26 +293,32 @@ pub fn Settings<'a, G: Html>(
                         legend { "Настройки индексации" }
                         CheckboxSetting(id="watcher_enabled", label="Отслеживать изменения файлов: ",
                             value=watcher_enabled)
-                        NumberSetting(id="debouncer_timeout", label="Время задержки событий файловой системы (с): ",
+                        NumberSetting(id="debouncer_timeout".to_owned(),
+                            label="Время задержки событий файловой системы (с): ".to_owned(),
                             min=DEBOUNCER_TIMEOUT_MIN, max=DEBOUNCER_TIMEOUT_MAX,
                             value=debouncer_timeout, valid=debouncer_timeout_valid)
-                        NumberSetting(id="max_file_size", label="Максимальный размер файла (МиБ): ",
+                        NumberSetting(id="max_file_size".to_owned(),
+                            label="Максимальный размер файла (МиБ): ".to_owned(),
                             min=MAX_FILE_SIZE_MIN, max=MAX_FILE_SIZE_MAX,
                             value=max_file_size, valid=max_file_size_valid)
-                        NumberSetting(id="max_concurrent_files", label="Максимальное количество одновременно обрабатываемых документов: ",
+                        NumberSetting(id="max_concurrent_files".to_owned(),
+                            label="Максимальное количество одновременно обрабатываемых документов: ".to_owned(),
                             min=MAX_CONCURRENT_FILES_MIN, max=MAX_CONCURRENT_FILES_MAX,
                             value=max_concurrent_files, valid=max_concurrent_files_valid)
-                        NumberSetting(id="elasticsearch_batch_size", label="Количество отправляемых в Elasticsearch изменений за раз: ",
+                        NumberSetting(id="elasticsearch_batch_size".to_owned(),
+                            label="Количество отправляемых в Elasticsearch изменений за раз: ".to_owned(),
                             min=ELASTICSEARCH_BATCH_SIZE_MIN, max=ELASTICSEARCH_BATCH_SIZE_MAX,
                             value=elasticsearch_batch_size, valid=elasticsearch_batch_size_valid)
                     }
 
                     fieldset {
                         legend { "Настройки поиска" }
-                        NumberSetting(id="results_per_page", label="Количество результатов на странице: ",
+                        NumberSetting(id="results_per_page".to_owned(),
+                            label="Количество результатов на странице: ".to_owned(),
                             min=RESULTS_PER_PAGE_MIN, max=RESULTS_PER_PAGE_MAX,
                             value=results_per_page, valid=results_per_page_valid)
-                        NumberSetting(id="knn_candidates_multiplier", label="Множитель количества кандидатов kNN при семантическом поиске: ",
+                        NumberSetting(id="knn_candidates_multiplier".to_owned(),
+                            label="Множитель количества кандидатов kNN при семантическом поиске: ".to_owned(),
                             min=KNN_CANDIDATES_MULTIPLIER_MIN, max=KNN_CANDIDATES_MULTIPLIER_MAX,
                             value=knn_candidates_multiplier, valid=knn_candidates_multiplier_valid)
                     }
@@ -338,42 +334,24 @@ pub fn Settings<'a, G: Html>(
                             value=image_search_enabled)
                         CheckboxSetting(id="reranking_enabled", label="Переранжирование: ",
                             value=reranking_enabled)
-                        CheckboxSetting(id="cuda_enabled", label="Использовать CUDA: ",
-                            value=cuda_enabled)
-                        NumberSetting(id="clip_image_batch_size", label="CLIP (изображения): размер пакета: ",
-                            min=BATCH_SIZE_MIN, max=BATCH_SIZE_MAX,
-                            value=clip_image_batch_size, valid=clip_image_batch_size_valid)
-                        NumberSetting(id="clip_image_max_delay", label="CLIP (изображения): время ожидания пакета (мс): ",
-                            min=MAX_DELAY_MS_MIN, max=MAX_DELAY_MS_MAX,
-                            value=clip_image_max_delay_ms, valid=clip_image_max_delay_ms_valid)
-                        NumberSetting(id="clip_text_batch_size", label="CLIP (текст): размер пакета: ",
-                            min=BATCH_SIZE_MIN, max=BATCH_SIZE_MAX,
-                            value=clip_text_batch_size, valid=clip_text_batch_size_valid)
-                        NumberSetting(id="clip_text_max_delay", label="CLIP (текст): время ожидания пакета (мс): ",
-                            min=MAX_DELAY_MS_MIN, max=MAX_DELAY_MS_MAX,
-                            value=clip_text_max_delay_ms, valid=clip_text_max_delay_ms_valid)
-                        NumberSetting(id="minilm_text_batch_size", label="MiniLM (текст): размер пакета: ",
-                            min=BATCH_SIZE_MIN, max=BATCH_SIZE_MAX,
-                            value=minilm_text_batch_size, valid=minilm_text_batch_size_valid)
-                        NumberSetting(id="minilm_text_max_delay", label="MiniLM (текст): время ожидания пакета (мс): ",
-                            min=MAX_DELAY_MS_MIN, max=MAX_DELAY_MS_MAX,
-                            value=minilm_text_max_delay_ms, valid=minilm_text_max_delay_ms_valid)
-                        NumberSetting(id="minilm_rerank_batch_size", label="MiniLM (переранжирование): размер пакета: ",
-                            min=BATCH_SIZE_MIN, max=BATCH_SIZE_MAX,
-                            value=minilm_rerank_batch_size, valid=minilm_rerank_batch_size_valid)
-                        NumberSetting(id="minilm_rerank_max_delay", label="MiniLM (переранжирование): время ожидания пакета (мс): ",
-                            min=MAX_DELAY_MS_MIN, max=MAX_DELAY_MS_MAX,
-                            value=minilm_rerank_max_delay_ms, valid=minilm_rerank_max_delay_ms_valid)
-                        NumberSetting(id="max_sentences", label="Максимальное количество обрабатываемых предложений: ",
+                        NNSetting(id="clip_image", label="CLIP (изображения)", data=clip_image_data)
+                        NNSetting(id="clip_text", label="CLIP (текст)", data=clip_text_data)
+                        NNSetting(id="minilm_text", label="MiniLM (текст)", data=minilm_text_data)
+                        NNSetting(id="minilm_rerank", label="MiniLM (переранжирование)", data=minilm_rerank_data)
+                        NumberSetting(id="max_sentences".to_owned(),
+                            label="Максимальное количество обрабатываемых предложений: ".to_owned(),
                             min=MAX_SENTENCES_MIN, max=MAX_SENTENCES_MAX,
                             value=max_sentences, valid=max_sentences_valid)
-                        NumberSetting(id="window_size", label="Размер окна слов: ",
+                        NumberSetting(id="window_size".to_owned(),
+                            label="Размер окна слов: ".to_owned(),
                             min=WINDOW_SIZE_MIN, max=WINDOW_SIZE_MAX,
                             value=window_size, valid=window_size_valid)
-                        NumberSetting(id="window_step", label="Шаг окна слов: ",
+                        NumberSetting(id="window_step".to_owned(),
+                            label="Шаг окна слов: ".to_owned(),
                             min=WINDOW_STEP_MIN, max=WINDOW_STEP_MAX,
                             value=window_step, valid=window_step_valid)
-                        NumberSetting(id="summary_len", label="Количество предложений на документ для переранжирования: ",
+                        NumberSetting(id="summary_len".to_owned(),
+                            label="Количество предложений на документ для переранжирования: ".to_owned(),
                             min=SUMMARY_LEN_MIN, max=SUMMARY_LEN_MAX,
                             value=summary_len, valid=summary_len_valid)
                     }

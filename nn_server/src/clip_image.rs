@@ -1,5 +1,3 @@
-use std::time::Duration;
-
 use axum::{body::Bytes, extract::Query, http::StatusCode, Json};
 use common_lib::{settings::NNServerSettings, BatchRequest};
 use image::{imageops::FilterType, DynamicImage};
@@ -24,18 +22,15 @@ pub fn initialize_model(
 ) -> onnxruntime::Result<()> {
     MODEL
         .set(
-            set_device(environment.new_session_builder()?, settings)?
+            set_device(environment.new_session_builder()?, &settings.clip_image)?
                 .with_graph_optimization_level(GraphOptimizationLevel::All)?
                 .with_model_from_file(PATH_PREFIX.to_owned() + "models/clip-ViT-B-32/model.onnx")?,
         )
         .unwrap_or_log();
     BATCH_SENDER
-        .set(start_batch_process(
-            settings.clip_image_batch_size,
-            Duration::from_millis(settings.clip_image_max_delay_ms),
-            2 * settings.clip_image_batch_size,
-            |batch| log_processing_function("CLIP/Image", compute_embeddings, batch),
-        ))
+        .set(start_batch_process(&settings.clip_image, |batch| {
+            log_processing_function("CLIP/Image", compute_embeddings, batch)
+        }))
         .unwrap_or_log();
     Ok(())
 }

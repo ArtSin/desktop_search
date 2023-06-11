@@ -1,11 +1,22 @@
-use std::{fmt::Display, ops::DerefMut, str::FromStr};
+use std::{
+    fmt::{Debug, Display},
+    hash::Hash,
+    ops::DerefMut,
+    str::FromStr,
+};
 
-use common_lib::{actions::PickFolderResult, settings::IndexingDirectory};
+use common_lib::{
+    actions::PickFolderResult,
+    settings::{IndexingDirectory, NNDevice, NNSettings},
+};
 use sycamore::{futures::spawn_local_scoped, prelude::*};
 use uuid::Uuid;
 use wasm_bindgen::JsValue;
 
-use crate::app::{fetch, widgets::StatusDialogState};
+use crate::{
+    app::{fetch, widgets::StatusDialogState},
+    settings::{BATCH_SIZE_MAX, BATCH_SIZE_MIN, MAX_DELAY_MS_MAX, MAX_DELAY_MS_MIN},
+};
 
 #[derive(Prop)]
 pub struct SimpleTextSettingProps<'a> {
@@ -67,8 +78,8 @@ where
 
 #[derive(Prop)]
 pub struct NumberSettingProps<'a, T> {
-    pub id: &'static str,
-    pub label: &'static str,
+    pub id: String,
+    pub label: String,
     pub min: T,
     pub max: T,
     pub value: &'a Signal<T>,
@@ -82,6 +93,9 @@ where
     <T as FromStr>::Err: Display,
     G: Html,
 {
+    let id = props.id.clone();
+    let id_ = props.id.clone();
+
     let value_str = create_signal(cx, props.value.to_string());
 
     create_effect(cx, move || {
@@ -112,7 +126,7 @@ where
     view! { cx,
         div(class="setting") {
             label(for=props.id) { (props.label) }
-            input(type="text", size=10, id=props.id, name=props.id, bind:value=value_str) {}
+            input(type="text", size=10, id=id, name=id_, bind:value=value_str) {}
             (if *props.valid.get() { "✅" } else { "❌" })
         }
     }
@@ -132,6 +146,48 @@ pub fn CheckboxSetting<'a, G: Html>(cx: Scope<'a>, props: CheckboxSettingProps<'
         div(class="setting checkbox_setting") {
             label(for=props.id) { (props.label) }
             input(type="checkbox", id=props.id, name=props.id, bind:checked=value) {}
+        }
+    }
+}
+
+#[derive(Prop)]
+pub struct SelectSettingProps<'a, T> {
+    pub id: String,
+    pub label: String,
+    pub options: &'a ReadSignal<Vec<(T, &'static str)>>,
+    pub value: &'a Signal<T>,
+}
+
+#[component]
+pub fn SelectSetting<'a, T, G>(cx: Scope<'a>, props: SelectSettingProps<'a, T>) -> View<G>
+where
+    T: Copy + Eq + Hash + Display + FromStr,
+    <T as FromStr>::Err: Debug,
+    G: Html,
+{
+    let id = props.id.clone();
+    let id_ = props.id.clone();
+
+    let value_str = create_signal(cx, props.value.get().to_string());
+    create_effect(cx, || {
+        props.value.set_silent(value_str.get().parse().unwrap());
+    });
+    create_effect(cx, || value_str.set(props.value.get().to_string()));
+
+    view! { cx,
+        div(class="setting checkbox_setting") {
+            label(for=props.id) { (props.label) }
+            select(id=id, name=id_, bind:value=value_str) {
+                Keyed(
+                    iterable=props.options,
+                    key=|item| item.0,
+                    view=move |cx, item| {
+                        view! { cx,
+                            option(value=(item.0)) { (item.1) }
+                        }
+                    }
+                )
+            }
         }
     }
 }
@@ -230,5 +286,73 @@ pub fn DirectoryList<'a, G: Html>(
             label(for="curr_directory_watch") { "Отслеживать" }
             button(type="button", on:click=add_item, disabled=*curr_directory_empty.get()) { "➕" }
         }
+    }
+}
+
+#[derive(Clone)]
+pub struct NNSettingsData<'a> {
+    device: &'a Signal<NNDevice>,
+    batch_size: &'a Signal<usize>,
+    max_delay_ms: &'a Signal<u64>,
+
+    batch_size_valid: &'a Signal<bool>,
+    max_delay_ms_valid: &'a Signal<bool>,
+    pub any_invalid: &'a ReadSignal<bool>,
+}
+
+impl<'a> NNSettingsData<'a> {
+    pub fn new(cx: Scope<'a>, settings: &NNSettings) -> Self {
+        let batch_size_valid = create_signal(cx, true);
+        let max_delay_ms_valid = create_signal(cx, true);
+        let any_invalid = create_memo(cx, || {
+            !*batch_size_valid.get() || !*max_delay_ms_valid.get()
+        });
+
+        Self {
+            device: create_signal(cx, settings.device),
+            batch_size: create_signal(cx, settings.batch_size),
+            max_delay_ms: create_signal(cx, settings.max_delay_ms),
+            batch_size_valid,
+            max_delay_ms_valid,
+            any_invalid,
+        }
+    }
+
+    pub fn to_settings(&self) -> NNSettings {
+        NNSettings {
+            device: *self.device.get(),
+            batch_size: *self.batch_size.get(),
+            max_delay_ms: *self.max_delay_ms.get(),
+        }
+    }
+
+    pub fn update_from_settings(&mut self, settings: NNSettings) {
+        self.device.set(settings.device);
+        self.batch_size.set(settings.batch_size);
+        self.max_delay_ms.set(settings.max_delay_ms);
+    }
+}
+
+#[component(inline_props)]
+pub fn NNSetting<'a, G: Html>(
+    cx: Scope<'a>,
+    id: &'static str,
+    label: &'static str,
+    data: &'a Signal<NNSettingsData<'a>>,
+) -> View<G> {
+    let device_options = create_signal(
+        cx,
+        vec![(NNDevice::CPU, "Процессор"), (NNDevice::CUDA, "CUDA")],
+    );
+
+    view! { cx,
+        SelectSetting(id=id.to_owned() + "_device", label=label.to_owned() + ": устройство: ",
+            options=device_options, value=data.get().device)
+        NumberSetting(id=id.to_owned() + "_batch_size", label=label.to_owned() + ": размер пакета: ",
+            min=BATCH_SIZE_MIN, max=BATCH_SIZE_MAX,
+            value=data.get().batch_size, valid=data.get().batch_size_valid)
+        NumberSetting(id=id.to_owned() + "_max_delay", label=label.to_owned() + ": время ожидания пакета (мс): ",
+            min=MAX_DELAY_MS_MIN, max=MAX_DELAY_MS_MAX,
+            value=data.get().max_delay_ms, valid=data.get().max_delay_ms_valid)
     }
 }

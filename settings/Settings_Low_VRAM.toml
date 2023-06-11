@@ -1,0 +1,21 @@
+max_concurrent_files = 16
+
+[nn_server.clip_image]
+device = "CUDA"
+batch_size = 8
+max_delay_ms = 100
+
+[nn_server.clip_text]
+device = "CPU"
+batch_size = 16
+max_delay_ms = 100
+
+[nn_server.minilm_text]
+device = "CUDA"
+batch_size = 16
+max_delay_ms = 100
+
+[nn_server.minilm_rerank]
+device = "CPU"
+batch_size = 4
+max_delay_ms = 100

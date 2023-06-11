@@ -1,5 +1,3 @@
-use std::time::Duration;
-
 use axum::{extract::Query, http::StatusCode, Json};
 use common_lib::{settings::NNServerSettings, BatchRequest};
 use once_cell::sync::OnceCell;
@@ -32,7 +30,7 @@ pub fn initialize_model(
 ) -> anyhow::Result<()> {
     MAIN_MODEL
         .set(
-            set_device(environment.new_session_builder()?, settings)?
+            set_device(environment.new_session_builder()?, &settings.clip_text)?
                 .with_graph_optimization_level(GraphOptimizationLevel::All)?
                 .with_model_from_file(
                     PATH_PREFIX.to_owned() + "models/clip-ViT-B-32-multilingual-v1/model.onnx",
@@ -64,12 +62,9 @@ pub fn initialize_model(
         )
         .unwrap_or_log();
     BATCH_SENDER
-        .set(start_batch_process(
-            settings.clip_text_batch_size,
-            Duration::from_millis(settings.clip_text_max_delay_ms),
-            2 * settings.clip_text_batch_size,
-            |batch| log_processing_function("CLIP/Text", compute_embeddings, batch),
-        ))
+        .set(start_batch_process(&settings.clip_text, |batch| {
+            log_processing_function("CLIP/Text", compute_embeddings, batch)
+        }))
         .unwrap_or_log();
     Ok(())
 }
