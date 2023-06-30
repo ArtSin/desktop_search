@@ -9,24 +9,28 @@ use common_lib::{
     actions::PickFolderResult,
     settings::{IndexingDirectory, NNDevice, NNSettings},
 };
+use fluent_bundle::{FluentArgs, FluentValue};
 use sycamore::{futures::spawn_local_scoped, prelude::*};
 use uuid::Uuid;
 use wasm_bindgen::JsValue;
 
 use crate::{
-    app::{fetch, widgets::StatusDialogState},
+    app::{fetch, get_translation, widgets::StatusDialogState},
     settings::{BATCH_SIZE_MAX, BATCH_SIZE_MIN, MAX_DELAY_MS_MAX, MAX_DELAY_MS_MIN},
 };
 
 #[derive(Prop)]
-pub struct SimpleTextSettingProps<'a> {
+pub struct SimpleTextSettingProps<'a, S: AsRef<str>> {
     pub id: &'static str,
-    pub label: &'static str,
+    pub label: S,
     pub value: &'a Signal<String>,
 }
 
 #[component]
-pub fn SimpleTextSetting<'a, G: Html>(cx: Scope<'a>, props: SimpleTextSettingProps<'a>) -> View<G> {
+pub fn SimpleTextSetting<'a, S: 'static + AsRef<str> + Display, G: Html>(
+    cx: Scope<'a>,
+    props: SimpleTextSettingProps<'a, S>,
+) -> View<G> {
     let value = props.value;
     view! { cx,
         div(class="setting") {
@@ -37,18 +41,22 @@ pub fn SimpleTextSetting<'a, G: Html>(cx: Scope<'a>, props: SimpleTextSettingPro
 }
 
 #[derive(Prop)]
-pub struct TextSettingProps<'a, T, F> {
+pub struct TextSettingProps<'a, T, S: AsRef<str>, F> {
     pub id: &'static str,
-    pub label: &'static str,
+    pub label: S,
     pub parse: F,
     pub value: &'a Signal<T>,
     pub valid: &'a Signal<bool>,
 }
 
 #[component]
-pub fn TextSetting<'a, T, E, F, G>(cx: Scope<'a>, props: TextSettingProps<'a, T, F>) -> View<G>
+pub fn TextSetting<'a, T, S, E, F, G>(
+    cx: Scope<'a>,
+    props: TextSettingProps<'a, T, S, F>,
+) -> View<G>
 where
     T: Display,
+    S: 'static + AsRef<str> + Display,
     F: Fn(&str) -> Result<T, E> + 'a,
     G: Html,
 {
@@ -77,9 +85,9 @@ where
 }
 
 #[derive(Prop)]
-pub struct NumberSettingProps<'a, T> {
+pub struct NumberSettingProps<'a, T, S: AsRef<str>> {
     pub id: String,
-    pub label: String,
+    pub label: S,
     pub min: T,
     pub max: T,
     pub value: &'a Signal<T>,
@@ -87,10 +95,11 @@ pub struct NumberSettingProps<'a, T> {
 }
 
 #[component]
-pub fn NumberSetting<'a, T, G>(cx: Scope<'a>, props: NumberSettingProps<'a, T>) -> View<G>
+pub fn NumberSetting<'a, T, S, G>(cx: Scope<'a>, props: NumberSettingProps<'a, T, S>) -> View<G>
 where
     T: Copy + FromStr + Display + PartialOrd,
     <T as FromStr>::Err: Display,
+    S: 'static + AsRef<str> + Display,
     G: Html,
 {
     let id = props.id.clone();
@@ -133,14 +142,17 @@ where
 }
 
 #[derive(Prop)]
-pub struct CheckboxSettingProps<'a> {
+pub struct CheckboxSettingProps<'a, S> {
     pub id: &'static str,
-    pub label: &'static str,
+    pub label: S,
     pub value: &'a Signal<bool>,
 }
 
 #[component]
-pub fn CheckboxSetting<'a, G: Html>(cx: Scope<'a>, props: CheckboxSettingProps<'a>) -> View<G> {
+pub fn CheckboxSetting<'a, S: 'static + AsRef<str> + Display, G: Html>(
+    cx: Scope<'a>,
+    props: CheckboxSettingProps<'a, S>,
+) -> View<G> {
     let value = props.value;
     view! { cx,
         div(class="setting checkbox_setting") {
@@ -151,18 +163,19 @@ pub fn CheckboxSetting<'a, G: Html>(cx: Scope<'a>, props: CheckboxSettingProps<'
 }
 
 #[derive(Prop)]
-pub struct SelectSettingProps<'a, T> {
+pub struct SelectSettingProps<'a, T, S: AsRef<str>> {
     pub id: String,
     pub label: String,
-    pub options: &'a ReadSignal<Vec<(T, &'static str)>>,
+    pub options: &'a ReadSignal<Vec<(T, S)>>,
     pub value: &'a Signal<T>,
 }
 
 #[component]
-pub fn SelectSetting<'a, T, G>(cx: Scope<'a>, props: SelectSettingProps<'a, T>) -> View<G>
+pub fn SelectSetting<'a, T, S, G>(cx: Scope<'a>, props: SelectSettingProps<'a, T, S>) -> View<G>
 where
     T: Copy + Eq + Hash + Display + FromStr,
     <T as FromStr>::Err: Debug,
+    S: 'static + AsRef<str> + Clone + Display + PartialEq,
     G: Html,
 {
     let id = props.id.clone();
@@ -238,9 +251,10 @@ pub fn DirectoryList<'a, G: Html>(
                     }
                 }
                 Err(e) => {
-                    status_dialog_state.set(StatusDialogState::Error(format!(
-                        "❌ Ошибка открытия диалога: {e:#?}",
-                    )));
+                    let error_args = FluentArgs::from_iter([("error", format!("{e:#?}"))]);
+                    let error_str =
+                        get_translation("dialog_opening_error", Some(&error_args)).to_string();
+                    status_dialog_state.set(StatusDialogState::Error(error_str));
                 }
             }
         });
@@ -266,8 +280,8 @@ pub fn DirectoryList<'a, G: Html>(
                 view! { cx,
                     div(class="setting") {
                         input(type="text", readonly=true, value=item.dir.path.display()) {}
-                        p { (if item.dir.exclude { "Исключено" } else { "Включено" }) }
-                        p { (if item.dir.watch { "Отслеживается" } else { "Не отслеживается" }) }
+                        p { (if item.dir.exclude { get_translation("excluded", None) } else { get_translation("included", None) }) }
+                        p { (if item.dir.watch { get_translation("watching", None) } else { get_translation("not_watching", None) }) }
                         button(type="button", on:click=delete_item) { "➖" }
                     }
                 }
@@ -276,14 +290,14 @@ pub fn DirectoryList<'a, G: Html>(
 
         div(class="setting") {
             input(type="text", readonly=true, value=curr_directory.get().path.display()) {}
-            button(type="button", on:click=select_item) { "Выбрать..." }
+            button(type="button", on:click=select_item) { (get_translation("select", None)) }
             select(bind:value=curr_directory_exclude_str) {
-                option(selected=true, value="false") { "Включить" }
-                option(value="true") { "Исключить" }
+                option(selected=true, value="false") { (get_translation("include", None)) }
+                option(value="true") { (get_translation("exclude", None)) }
             }
             input(type="checkbox", id="curr_directory_watch", name="curr_directory_watch",
                 disabled=*curr_directory_exclude_str.get() == "true", bind:checked=curr_directory_watch)
-            label(for="curr_directory_watch") { "Отслеживать" }
+            label(for="curr_directory_watch") { (get_translation("watch", None)) }
             button(type="button", on:click=add_item, disabled=*curr_directory_empty.get()) { "➕" }
         }
     }
@@ -334,24 +348,37 @@ impl<'a> NNSettingsData<'a> {
 }
 
 #[component(inline_props)]
-pub fn NNSetting<'a, G: Html>(
+pub fn NNSetting<'a, S, G>(
     cx: Scope<'a>,
     id: &'static str,
-    label: &'static str,
+    label: S,
     data: &'a Signal<NNSettingsData<'a>>,
-) -> View<G> {
+) -> View<G>
+where
+    S: 'static + AsRef<str>,
+    FluentValue<'static>: From<S>,
+    G: Html,
+{
     let device_options = create_signal(
         cx,
-        vec![(NNDevice::CPU, "Процессор"), (NNDevice::CUDA, "CUDA")],
+        vec![
+            (NNDevice::CPU, get_translation("cpu", None)),
+            (NNDevice::CUDA, get_translation("cuda", None)),
+        ],
     );
 
+    let label_args = FluentArgs::from_iter([("model", label)]);
+    let label_device = get_translation("nn_setting_device", Some(&label_args)).to_string();
+    let label_batch_size = get_translation("nn_setting_batch_size", Some(&label_args)).to_string();
+    let label_max_delay = get_translation("nn_setting_max_delay", Some(&label_args)).to_string();
+
     view! { cx,
-        SelectSetting(id=id.to_owned() + "_device", label=label.to_owned() + ": устройство: ",
+        SelectSetting(id=id.to_owned() + "_device", label=label_device,
             options=device_options, value=data.get().device)
-        NumberSetting(id=id.to_owned() + "_batch_size", label=label.to_owned() + ": размер пакета: ",
+        NumberSetting(id=id.to_owned() + "_batch_size", label=label_batch_size,
             min=BATCH_SIZE_MIN, max=BATCH_SIZE_MAX,
             value=data.get().batch_size, valid=data.get().batch_size_valid)
-        NumberSetting(id=id.to_owned() + "_max_delay", label=label.to_owned() + ": время ожидания пакета (мс): ",
+        NumberSetting(id=id.to_owned() + "_max_delay", label=label_max_delay,
             min=MAX_DELAY_MS_MIN, max=MAX_DELAY_MS_MAX,
             value=data.get().max_delay_ms, valid=data.get().max_delay_ms_valid)
     }

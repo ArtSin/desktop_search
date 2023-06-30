@@ -1,4 +1,5 @@
 use common_lib::indexer::{IndexStats, IndexingStatus, IndexingWSMessage, MAX_ERROR_CNT};
+use fluent_bundle::FluentArgs;
 use futures::StreamExt;
 use gloo_net::websocket::{futures::WebSocket, Message};
 use sycamore::{futures::spawn_local_scoped, prelude::*};
@@ -6,9 +7,27 @@ use url::Url;
 use wasm_bindgen::JsValue;
 
 use crate::{
-    app::{fetch_empty, widgets::StatusDialogState},
+    app::{fetch_empty, get_translation, widgets::StatusDialogState},
     formatting::{duration_str_from_seconds, file_size_str},
 };
+
+fn indexing_status_str(status: &IndexingStatus) -> String {
+    match status {
+        IndexingStatus::NotStarted | IndexingStatus::Finished(_) => {
+            get_translation("indexing_status_no_indexing", None).to_string()
+        }
+        IndexingStatus::DiffFailed(e) => {
+            let error_args = FluentArgs::from_iter([("error", e.to_owned())]);
+            get_translation("indexing_status_diff_failed", Some(&error_args)).to_string()
+        }
+        IndexingStatus::CalculatingDiff => {
+            get_translation("indexing_status_calculating_diff", None).to_string()
+        }
+        IndexingStatus::Indexing(_) => {
+            get_translation("indexing_status_indexing", None).to_string()
+        }
+    }
+}
 
 async fn index() -> Result<(), JsValue> {
     fetch_empty("/index", "PATCH", None::<&()>).await
@@ -59,9 +78,10 @@ pub fn Status<'a, G: Html>(
             }
             .await
             {
-                status_dialog_state.set(StatusDialogState::Error(format!(
-                    "❌ Ошибка загрузки статуса индексирования: {e}",
-                )));
+                let error_args = FluentArgs::from_iter([("error", e)]);
+                let error_str =
+                    get_translation("indexing_status_loading_error", Some(&error_args)).to_string();
+                status_dialog_state.set(StatusDialogState::Error(error_str));
             }
         });
     });
@@ -75,9 +95,10 @@ pub fn Status<'a, G: Html>(
                     status_dialog_state.set(StatusDialogState::None);
                 }
                 Err(e) => {
-                    status_dialog_state.set(StatusDialogState::Error(format!(
-                        "❌ Ошибка индексирования: {e:#?}",
-                    )));
+                    let error_args = FluentArgs::from_iter([("error", format!("{e:#?}"))]);
+                    let error_str =
+                        get_translation("indexing_error", Some(&error_args)).to_string();
+                    status_dialog_state.set(StatusDialogState::Error(error_str));
                 }
             }
         })
@@ -92,9 +113,10 @@ pub fn Status<'a, G: Html>(
                     status_dialog_state.set(StatusDialogState::None);
                 }
                 Err(e) => {
-                    status_dialog_state.set(StatusDialogState::Error(format!(
-                        "❌ Ошибка очищения индекса: {e:#?}",
-                    )));
+                    let error_args = FluentArgs::from_iter([("error", format!("{e:#?}"))]);
+                    let error_str =
+                        get_translation("index_clearing_error", Some(&error_args)).to_string();
+                    status_dialog_state.set(StatusDialogState::Error(error_str));
                 }
             }
         })
@@ -105,15 +127,13 @@ pub fn Status<'a, G: Html>(
             main {
                 form(id="status", on:submit=index, action="javascript:void(0);") {
                     fieldset {
-                        legend { "Индексация" }
+                        legend { (get_translation("indexing", None)) }
                         p {
-                            "Статус: " (indexing_status.get())
+                            (get_translation("indexing_status", Some(&FluentArgs::from_iter([("status", indexing_status_str(&indexing_status.get()))]))).to_string())
                         }
                         (if let IndexingStatus::Finished(_) = *indexing_status.get() {
                             view! { cx,
-                                p {
-                                    "Результаты последней индексации:"
-                                }
+                                p { (get_translation("indexing_results", None)) }
                             }
                         } else {
                             view! { cx, }
@@ -121,18 +141,22 @@ pub fn Status<'a, G: Html>(
                         (match (*indexing_status.get()).clone() {
                             IndexingStatus::Indexing(data) | IndexingStatus::Finished(data) => {
                                 let errors = create_signal(cx, data.errors);
+
+                                let add_remove_update_args = FluentArgs::from_iter([("to_add", data.to_add), ("to_remove", data.to_remove), ("to_update", data.to_update)]);
+                                let add_remove_update_str = get_translation("indexing_add_remove_update", Some(&add_remove_update_args)).to_string();
+
+                                let processed_sent_args = FluentArgs::from_iter([("processed", data.processed), ("sent", data.sent)]);
+                                let processed_sent_str = get_translation("indexing_processed_sent", Some(&processed_sent_args)).to_string();
+
                                 view! { cx,
-                                    p {
-                                        "Добавление " (data.to_add) ", удаление " (data.to_remove)
-                                        ", обновление " (data.to_update) " файлов в индексе"
-                                    }
-                                    p {
-                                        "Обработано " (data.processed) " файлов, загружено "
-                                        (data.sent) " изменений"
-                                    }
+                                    p { (add_remove_update_str) }
+                                    p { (processed_sent_str) }
                                     (if let Some(duration) = data.duration {
                                         let duration_str = duration_str_from_seconds(duration.as_secs_f32());
-                                        view! { cx, p { "Прошло " (duration_str) } }
+                                        let elapsed_args = FluentArgs::from_iter([("duration", duration_str)]);
+                                        let elapsed_str = get_translation("indexing_elapsed", Some(&elapsed_args)).to_string();
+
+                                        view! { cx, p { (elapsed_str) } }
                                     } else {
                                         view! { cx, }
                                     })
@@ -140,19 +164,17 @@ pub fn Status<'a, G: Html>(
                                         iterable=errors,
                                         key=|e| e.to_owned(),
                                         view=move |cx, e| {
-                                            view! { cx,
-                                                p {
-                                                    "❌ Ошибка индексации: " (e)
-                                                }
-                                            }
+                                            let error_args = FluentArgs::from_iter([("error", e)]);
+                                            let error_str = get_translation("indexing_error", Some(&error_args)).to_string();
+
+                                            view! { cx, p { (error_str) } }
                                         }
                                     )
                                     (if data.errors_cnt > MAX_ERROR_CNT {
-                                        view! { cx,
-                                            p {
-                                                "(ещё " (data.errors_cnt - MAX_ERROR_CNT) " ошибок)"
-                                            }
-                                        }
+                                        let more_errors_args = FluentArgs::from_iter([("count", data.errors_cnt - MAX_ERROR_CNT)]);
+                                        let more_errors_str = get_translation("indexing_more_errors", Some(&more_errors_args)).to_string();
+
+                                        view! { cx, p { (more_errors_str) } }
                                     } else {
                                         view! { cx, }
                                     })
@@ -164,18 +186,18 @@ pub fn Status<'a, G: Html>(
                         })
                     }
                     fieldset {
-                        legend { "Статистика" }
+                        legend { (get_translation("indexing_statistics", None)) }
                         p {
-                            "Количество файлов в индексе: " (index_stats.get().doc_cnt)
+                            (get_translation("indexing_doc_cnt", Some(&FluentArgs::from_iter([("count", index_stats.get().doc_cnt)]))).to_string())
                         }
                         p {
-                            "Размер индекса: " (file_size_str(index_stats.get().index_size))
+                            (get_translation("indexing_index_size", Some(&FluentArgs::from_iter([("size", file_size_str(index_stats.get().index_size))]))).to_string())
                         }
                     }
 
                     div(class="settings_buttons") {
-                        button(type="button", on:click=delete_index, disabled=*is_indexing.get()) { "Очистить индекс" }
-                        button(type="submit", disabled=*is_indexing.get()) { "Индексировать" }
+                        button(type="button", on:click=delete_index, disabled=*is_indexing.get()) { (get_translation("clear_index", None)) }
+                        button(type="submit", disabled=*is_indexing.get()) { (get_translation("index", None)) }
                     }
                 }
             }

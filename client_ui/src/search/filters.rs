@@ -8,16 +8,17 @@ use std::{
 
 use chrono::{DateTime, Local, TimeZone, Utc};
 use common_lib::actions::PickFolderResult;
+use fluent_bundle::FluentArgs;
 use sycamore::{futures::spawn_local_scoped, prelude::*};
 use wasm_bindgen::JsValue;
 
-use crate::app::{fetch, widgets::StatusDialogState};
+use crate::app::{fetch, get_translation, widgets::StatusDialogState};
 
 pub mod content_type;
 
 #[derive(Prop)]
-pub struct RadioFilterProps<'a, T: Copy> {
-    pub text: &'static str,
+pub struct RadioFilterProps<'a, T: Copy, S: AsRef<str>> {
+    pub text: S,
     pub name: &'static str,
     pub id: &'static str,
     pub value_signal: &'a Signal<T>,
@@ -26,7 +27,12 @@ pub struct RadioFilterProps<'a, T: Copy> {
 }
 
 #[component]
-pub fn RadioFilter<'a, T: Copy, G: Html>(cx: Scope<'a>, props: RadioFilterProps<'a, T>) -> View<G> {
+pub fn RadioFilter<'a, T, S, G>(cx: Scope<'a>, props: RadioFilterProps<'a, T, S>) -> View<G>
+where
+    T: Copy,
+    S: 'static + AsRef<str> + Display,
+    G: Html,
+{
     let update = move |_| {
         props.value_signal.set(props.value);
     };
@@ -40,14 +46,17 @@ pub fn RadioFilter<'a, T: Copy, G: Html>(cx: Scope<'a>, props: RadioFilterProps<
 }
 
 #[derive(Prop)]
-pub struct CheckboxFilterProps<'a> {
-    pub text: &'static str,
+pub struct CheckboxFilterProps<'a, S: AsRef<str>> {
+    pub text: S,
     pub id: &'static str,
     pub value_enabled: &'a Signal<bool>,
 }
 
 #[component]
-pub fn CheckboxFilter<'a, G: Html>(cx: Scope<'a>, props: CheckboxFilterProps<'a>) -> View<G> {
+pub fn CheckboxFilter<'a, S: 'static + AsRef<str> + Display, G: Html>(
+    cx: Scope<'a>,
+    props: CheckboxFilterProps<'a, S>,
+) -> View<G> {
     view! { cx,
         div(class="radio_checkbox_field") {
             input(type="checkbox", id=props.id, name=props.id, bind:checked=props.value_enabled) {}
@@ -57,16 +66,16 @@ pub fn CheckboxFilter<'a, G: Html>(cx: Scope<'a>, props: CheckboxFilterProps<'a>
 }
 
 #[derive(Prop)]
-pub struct CheckboxOptionFilterProps<'a> {
-    pub text: &'static str,
+pub struct CheckboxOptionFilterProps<'a, S: AsRef<str>> {
+    pub text: S,
     pub id: &'static str,
     pub value_enabled: &'a Signal<Option<bool>>,
 }
 
 #[component]
-pub fn CheckboxOptionFilter<'a, G: Html>(
+pub fn CheckboxOptionFilter<'a, S: 'static + AsRef<str> + Display, G: Html>(
     cx: Scope<'a>,
-    props: CheckboxOptionFilterProps<'a>,
+    props: CheckboxOptionFilterProps<'a, S>,
 ) -> View<G> {
     let enabled = create_signal(cx, false);
     let value = create_signal(cx, false);
@@ -94,18 +103,19 @@ pub fn CheckboxOptionFilter<'a, G: Html>(
 }
 
 #[derive(Prop)]
-pub struct SelectFilterProps<'a, T> {
-    pub text: &'static str,
+pub struct SelectFilterProps<'a, T, S: AsRef<str>> {
+    pub text: S,
     pub id: &'static str,
-    pub options: &'a ReadSignal<Vec<(T, &'static str)>>,
+    pub options: &'a ReadSignal<Vec<(T, S)>>,
     pub value: &'a Signal<T>,
 }
 
 #[component]
-pub fn SelectFilter<'a, T, G>(cx: Scope<'a>, props: SelectFilterProps<'a, T>) -> View<G>
+pub fn SelectFilter<'a, T, S, G>(cx: Scope<'a>, props: SelectFilterProps<'a, T, S>) -> View<G>
 where
     T: Copy + Eq + Hash + Display + FromStr,
     <T as FromStr>::Err: Debug,
+    S: 'static + AsRef<str> + Clone + Display + PartialEq,
     G: Html,
 {
     let value_str = create_signal(cx, props.options.get().first().unwrap().0.to_string());
@@ -133,18 +143,22 @@ where
 }
 
 #[derive(Prop)]
-pub struct SelectOptionFilterProps<'a, T> {
-    pub text: &'static str,
+pub struct SelectOptionFilterProps<'a, T, S: AsRef<str>> {
+    pub text: S,
     pub id: &'static str,
-    pub options: &'a ReadSignal<Vec<(T, &'static str)>>,
+    pub options: &'a ReadSignal<Vec<(T, S)>>,
     pub value: &'a Signal<Option<T>>,
 }
 
 #[component]
-pub fn SelectOptionFilter<'a, T, G>(cx: Scope<'a>, props: SelectOptionFilterProps<'a, T>) -> View<G>
+pub fn SelectOptionFilter<'a, T, S, G>(
+    cx: Scope<'a>,
+    props: SelectOptionFilterProps<'a, T, S>,
+) -> View<G>
 where
     T: Copy + Eq + Hash + Display + FromStr,
     <T as FromStr>::Err: Debug,
+    S: 'static + AsRef<str> + Clone + Display + PartialEq,
     G: Html,
 {
     let enabled = create_signal(cx, false);
@@ -185,8 +199,8 @@ where
 }
 
 #[derive(Prop)]
-pub struct DateTimeFilterProps<'a> {
-    pub legend: &'static str,
+pub struct DateTimeFilterProps<'a, S: AsRef<str>> {
+    pub legend: S,
     pub id: &'static str,
     pub value_from: &'a Signal<Option<DateTime<Utc>>>,
     pub value_to: &'a Signal<Option<DateTime<Utc>>>,
@@ -194,7 +208,10 @@ pub struct DateTimeFilterProps<'a> {
 }
 
 #[component]
-pub fn DateTimeFilter<'a, G: Html>(cx: Scope<'a>, props: DateTimeFilterProps<'a>) -> View<G> {
+pub fn DateTimeFilter<'a, S: 'static + AsRef<str> + Display, G: Html>(
+    cx: Scope<'a>,
+    props: DateTimeFilterProps<'a, S>,
+) -> View<G> {
     const FORMAT_STR: &str = "%FT%R";
 
     let curr_datetime_str = || format!("{}", Local::now().format(FORMAT_STR));
@@ -261,14 +278,14 @@ pub fn DateTimeFilter<'a, G: Html>(cx: Scope<'a>, props: DateTimeFilterProps<'a>
             div(class="filter_field") {
                 input(type="checkbox", id=(props.id.to_owned() + "_from"),
                     name=(props.id.to_owned() + "_from"), bind:checked=enabled_from) {}
-                label(for=(props.id.to_owned() + "_from")) { "От: " }
+                label(for=(props.id.to_owned() + "_from")) { (get_translation("filter_from", None)) }
                 input(type="datetime-local", disabled=!*enabled_from.get(), bind:value=value_from) {}
                 (if *valid_from.get() { "✅" } else { "❌" })
             }
             div(class="filter_field") {
                 input(type="checkbox", id=(props.id.to_owned() + "_to"),
                     name=(props.id.to_owned() + "_to"), bind:checked=enabled_to) {}
-                label(for=(props.id.to_owned() + "_to")) { "До: " }
+                label(for=(props.id.to_owned() + "_to")) { (get_translation("filter_to", None)) }
                 input(type="datetime-local", disabled=!*enabled_to.get(), bind:value=value_to) {}
                 (if *valid_to.get() { "✅" } else { "❌" })
             }
@@ -277,8 +294,8 @@ pub fn DateTimeFilter<'a, G: Html>(cx: Scope<'a>, props: DateTimeFilterProps<'a>
 }
 
 #[derive(Prop)]
-pub struct NumberFilterProps<'a, T> {
-    pub legend: &'static str,
+pub struct NumberFilterProps<'a, T, S: AsRef<str>> {
+    pub legend: S,
     pub id: &'static str,
     pub min: T,
     pub max: T,
@@ -288,10 +305,11 @@ pub struct NumberFilterProps<'a, T> {
 }
 
 #[component]
-pub fn NumberFilter<'a, T, G>(cx: Scope<'a>, props: NumberFilterProps<'a, T>) -> View<G>
+pub fn NumberFilter<'a, T, S, G>(cx: Scope<'a>, props: NumberFilterProps<'a, T, S>) -> View<G>
 where
     T: Copy + FromStr + Display + PartialOrd,
     <T as FromStr>::Err: Display,
+    S: 'static + AsRef<str> + Display,
     G: Html,
 {
     let value_from = create_signal(cx, props.min.to_string());
@@ -360,14 +378,14 @@ where
             div(class="filter_field") {
                 input(type="checkbox", id=(props.id.to_owned() + "_from"),
                     name=(props.id.to_owned() + "_from"), bind:checked=enabled_from) {}
-                label(for=(props.id.to_owned() + "_from")) { "От: " }
+                label(for=(props.id.to_owned() + "_from")) { (get_translation("filter_from", None)) }
                 input(type="text", size=10, disabled=!*enabled_from.get(), bind:value=value_from) {}
                 (if *valid_from.get() { "✅" } else { "❌" })
             }
             div(class="filter_field") {
                 input(type="checkbox", id=(props.id.to_owned() + "_to"),
                     name=(props.id.to_owned() + "_to"), bind:checked=enabled_to) {}
-                label(for=(props.id.to_owned() + "_to")) { "До: " }
+                label(for=(props.id.to_owned() + "_to")) { (get_translation("filter_to", None)) }
                 input(type="text", size=10, disabled=!*enabled_to.get(), bind:value=value_to) {}
                 (if *valid_to.get() { "✅" } else { "❌" })
             }
@@ -376,8 +394,8 @@ where
 }
 
 #[derive(Prop)]
-pub struct RangeWidgetProps<'a, T> {
-    pub legend: &'static str,
+pub struct RangeWidgetProps<'a, T, S: AsRef<str>> {
+    pub legend: S,
     pub id: &'static str,
     pub min: T,
     pub max: T,
@@ -386,10 +404,11 @@ pub struct RangeWidgetProps<'a, T> {
 }
 
 #[component]
-pub fn RangeWidget<'a, T, G>(cx: Scope<'a>, props: RangeWidgetProps<'a, T>) -> View<G>
+pub fn RangeWidget<'a, T, S, G>(cx: Scope<'a>, props: RangeWidgetProps<'a, T, S>) -> View<G>
 where
-    T: FromStr + Display + 'static,
+    T: 'static + FromStr + Display,
     <T as FromStr>::Err: std::fmt::Debug,
+    S: 'static + AsRef<str> + Display,
     G: Html,
 {
     let value_str = create_signal(cx, props.value.get().to_string());
@@ -406,7 +425,7 @@ where
             legend { (props.legend) }
             div(class="filter_field") {
                 label(for=props.id) { (value_formatted.get()) " " }
-                input(type="range", min=props.min, max=props.max, step=props.step, bind:value=value_str) {}
+                input(type="range", id=props.id, min=props.min, max=props.max, step=props.step, bind:value=value_str) {}
             }
         }
     }
@@ -417,15 +436,18 @@ async fn pick_folder() -> Result<PickFolderResult, JsValue> {
 }
 
 #[derive(Prop)]
-pub struct PathFilterProps<'a> {
-    pub legend: &'static str,
+pub struct PathFilterProps<'a, S: AsRef<str>> {
+    pub legend: S,
     pub id: &'static str,
     pub value: &'a Signal<Option<PathBuf>>,
     pub status_dialog_state: &'a Signal<StatusDialogState>,
 }
 
 #[component]
-pub fn PathFilter<'a, G: Html>(cx: Scope<'a>, props: PathFilterProps<'a>) -> View<G> {
+pub fn PathFilter<'a, S: 'static + AsRef<str> + Display, G: Html>(
+    cx: Scope<'a>,
+    props: PathFilterProps<'a, S>,
+) -> View<G> {
     let enabled = create_signal(cx, false);
     let value = create_signal(cx, PathBuf::new());
     let value_str = create_memo(cx, || value.get().to_string_lossy().into_owned());
@@ -448,11 +470,12 @@ pub fn PathFilter<'a, G: Html>(cx: Scope<'a>, props: PathFilterProps<'a>) -> Vie
                     }
                 }
                 Err(e) => {
+                    let error_args = FluentArgs::from_iter([("error", format!("{e:#?}"))]);
+                    let error_str =
+                        get_translation("dialog_opening_error", Some(&error_args)).to_string();
                     props
                         .status_dialog_state
-                        .set(StatusDialogState::Error(format!(
-                            "❌ Ошибка открытия диалога: {e:#?}",
-                        )));
+                        .set(StatusDialogState::Error(error_str));
                 }
             }
         });
@@ -464,7 +487,7 @@ pub fn PathFilter<'a, G: Html>(cx: Scope<'a>, props: PathFilterProps<'a>) -> Vie
             div(class="filter_field") {
                 input(type="checkbox", id=props.id, name=props.id, bind:checked=enabled)
                 input(type="text", size=7, disabled=!*enabled.get(), readonly=true, value=value_str)
-                button(type="button", on:click=select_directory) { "Выбрать" }
+                button(type="button", on:click=select_directory) { (get_translation("select", None)) }
             }
         }
     }

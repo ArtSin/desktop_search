@@ -26,3 +26,6 @@ wasm-bindgen = { version = "0.2.84", features = ["serde-serialize"] }
 wasm-bindgen-futures = "0.4.34"
 gloo-net = "0.2.6"
 sycamore = { version = "0.8.2", features = ["suspense", "hydrate"] }
+fluent-bundle = "0.15.2"
+unic-langid = "0.9.1"
+intl-memoizer = "0.5.1"

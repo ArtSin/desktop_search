@@ -5,14 +5,16 @@ use axum::{
     extract::{Query, State},
     http::{HeaderMap, Request, StatusCode, Uri},
     response::Response,
+    Json,
 };
-use common_lib::elasticsearch::ELASTICSEARCH_INDEX;
+use common_lib::{elasticsearch::ELASTICSEARCH_INDEX, ClientTranslation};
 use rust_embed::RustEmbed;
 use serde::Deserialize;
 use serde_json::Value;
 use tower::ServiceExt;
 use tower_http::services::ServeFile;
 use tracing_unwrap::{OptionExt, ResultExt};
+use unic_langid::LanguageIdentifier;
 
 use crate::{thumbnails::get_thumbnail, ServerState};
 
@@ -63,6 +65,37 @@ pub async fn get_client_file(uri: Uri) -> Result<Response<BoxBody>, (StatusCode,
         }
         None => Err((StatusCode::NOT_FOUND, "Not Found".to_owned())),
     }
+}
+
+pub async fn get_client_translation(headers: HeaderMap) -> Json<ClientTranslation> {
+    const LANGUAGES: [&str; 2] = ["ru-RU", "en-US"];
+
+    let requested = fluent_langneg::parse_accepted_languages(
+        headers
+            .get("Accept-Language")
+            .map(|x| x.to_str().unwrap_or_default())
+            .unwrap_or_default(),
+    );
+    let available = fluent_langneg::convert_vec_str_to_langids_lossy(LANGUAGES);
+    let default: LanguageIdentifier = "en-US".parse().unwrap();
+    let supported = fluent_langneg::negotiate_languages(
+        &requested,
+        &available,
+        Some(&default),
+        fluent_langneg::NegotiationStrategy::Filtering,
+    );
+    let selected = supported[0];
+
+    Json(ClientTranslation {
+        lang_id: selected.to_string(),
+        content: String::from_utf8(
+            Assets::get(&format!("translations/{}.ftl", selected))
+                .unwrap_or_log()
+                .data
+                .to_vec(),
+        )
+        .unwrap_or_log(),
+    })
 }
 
 pub async fn get_file(

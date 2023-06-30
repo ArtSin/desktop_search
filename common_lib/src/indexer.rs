@@ -1,4 +1,4 @@
-use std::{fmt::Display, mem::take, time::Duration};
+use std::{mem::take, time::Duration};
 
 use serde::{Deserialize, Serialize};
 
@@ -38,22 +38,6 @@ pub enum IndexingStatus {
     CalculatingDiff,
     Indexing(IndexingStatusData),
     Finished(IndexingStatusData),
-}
-
-impl Display for IndexingStatus {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::NotStarted | Self::Finished(_) => writeln!(f, "индексация не идёт"),
-            Self::DiffFailed(e) => writeln!(
-                f,
-                "не удалось вычислить разность между файловой системой и индексом: {e}"
-            ),
-            Self::CalculatingDiff => {
-                writeln!(f, "вычисление разности между файловой системой и индексом")
-            }
-            Self::Indexing(_) => writeln!(f, "идёт индексация"),
-        }
-    }
 }
 
 impl IndexingStatus {

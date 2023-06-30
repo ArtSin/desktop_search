@@ -2,6 +2,8 @@ use sycamore::prelude::*;
 use wasm_bindgen::JsCast;
 use web_sys::HtmlDialogElement;
 
+use crate::app::get_translation;
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum StatusDialogState {
     None,
@@ -17,12 +19,12 @@ pub fn StatusDialog<'a, G: Html>(
 ) -> View<G> {
     let header_str = create_memo(cx, || match *status.get() {
         StatusDialogState::None | StatusDialogState::Loading => String::new(),
-        StatusDialogState::Info(_) => "Информация".to_owned(),
-        StatusDialogState::Error(_) => "Ошибка".to_owned(),
+        StatusDialogState::Info(_) => get_translation("info", None).to_string(),
+        StatusDialogState::Error(_) => get_translation("error", None).to_string(),
     });
     let message_str = create_memo(cx, || match *status.get() {
         StatusDialogState::None => String::new(),
-        StatusDialogState::Loading => "⏳ Загрузка...".to_owned(),
+        StatusDialogState::Loading => get_translation("loading", None).to_string(),
         StatusDialogState::Info(ref x) => x.clone(),
         StatusDialogState::Error(ref x) => x.clone(),
     });
@@ -67,7 +69,7 @@ pub fn StatusDialog<'a, G: Html>(
                 (if *status.get() != StatusDialogState::Loading {
                     view! { cx,
                         menu {
-                            button { "ОК" }
+                            button { (get_translation("ok", None)) }
                         }
                     }
                 } else {

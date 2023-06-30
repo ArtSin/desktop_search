@@ -115,6 +115,10 @@ async fn main() {
         .route("/save_request", post(actions::save_request))
         .route("/file", get(file_server::get_file))
         .route("/document_content", get(file_server::get_document_content))
+        .route(
+            "/client_translation",
+            get(file_server::get_client_translation),
+        )
         .fallback(file_server::get_client_file)
         .with_state(server_state)
         .layer(

@@ -18,3 +18,9 @@ impl BatchRequest {
         true
     }
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ClientTranslation {
+    pub lang_id: String,
+    pub content: String,
+}

@@ -1,34 +1,36 @@
-use std::collections::HashMap;
+use std::{borrow::Cow, collections::HashMap, fmt::Display};
 
 use common_lib::search::ContentTypeRequestItem;
 use sycamore::prelude::*;
 use uuid::Uuid;
 
+use crate::app::get_translation;
+
 use super::CheckboxFilter;
 
 #[derive(Debug, Clone)]
-pub struct ContentTypeItem<'a> {
-    pub text: &'static str,
+pub struct ContentTypeItem<'a, S: AsRef<str>> {
+    pub text: S,
     pub type_: &'static str,
     pub enabled: &'a Signal<bool>,
     pub indeterminate: &'a Signal<bool>,
-    pub subtypes: &'a Signal<Vec<ContentTypeSubitem<'a>>>,
+    pub subtypes: &'a Signal<Vec<ContentTypeSubitem<'a, S>>>,
     pub id: Uuid,
 }
 
-impl PartialEq for ContentTypeItem<'_> {
+impl<S: AsRef<str>> PartialEq for ContentTypeItem<'_, S> {
     fn eq(&self, other: &Self) -> bool {
         self.id == other.id
     }
 }
-impl Eq for ContentTypeItem<'_> {}
+impl<S: AsRef<str>> Eq for ContentTypeItem<'_, S> {}
 
-impl<'a> ContentTypeItem<'a> {
+impl<'a, S: AsRef<str>> ContentTypeItem<'a, S> {
     fn new(
         cx: Scope<'a>,
-        text: &'static str,
+        text: S,
         type_: &'static str,
-        subtypes: Vec<ContentTypeSubitem<'a>>,
+        subtypes: Vec<ContentTypeSubitem<'a, S>>,
     ) -> Self {
         Self {
             text,
@@ -42,22 +44,22 @@ impl<'a> ContentTypeItem<'a> {
 }
 
 #[derive(Debug, Clone)]
-pub struct ContentTypeSubitem<'a> {
-    pub text: &'static str,
+pub struct ContentTypeSubitem<'a, S: AsRef<str>> {
+    pub text: S,
     pub essence: Vec<&'static str>,
     pub enabled: &'a Signal<bool>,
     pub id: Uuid,
 }
 
-impl PartialEq for ContentTypeSubitem<'_> {
+impl<S: AsRef<str>> PartialEq for ContentTypeSubitem<'_, S> {
     fn eq(&self, other: &Self) -> bool {
         self.id == other.id
     }
 }
-impl Eq for ContentTypeSubitem<'_> {}
+impl<S: AsRef<str>> Eq for ContentTypeSubitem<'_, S> {}
 
-impl<'a> ContentTypeSubitem<'a> {
-    fn new(cx: Scope<'a>, text: &'static str, essence: Vec<&'static str>) -> Self {
+impl<'a, S: AsRef<str>> ContentTypeSubitem<'a, S> {
+    fn new(cx: Scope<'a>, text: S, essence: Vec<&'static str>) -> Self {
         Self {
             text,
             essence,
@@ -68,42 +70,42 @@ impl<'a> ContentTypeSubitem<'a> {
 }
 
 #[derive(Prop)]
-pub struct ContentTypeFilterProps<'a> {
-    pub items: &'a ReadSignal<Vec<ContentTypeItem<'a>>>,
+pub struct ContentTypeFilterProps<'a, S: AsRef<str>> {
+    pub items: &'a ReadSignal<Vec<ContentTypeItem<'a, S>>>,
     pub disabled: &'a Signal<bool>,
 }
 
-pub fn content_type_filter_items(cx: Scope) -> &Signal<Vec<ContentTypeItem<'_>>> {
+pub fn content_type_filter_items(cx: Scope) -> &Signal<Vec<ContentTypeItem<'_, Cow<'_, str>>>> {
     create_signal(
         cx,
         vec![
             ContentTypeItem::new(
                 cx,
-                "Текстовые форматы",
+                get_translation("mime_text", None),
                 "text",
                 vec![
-                    ContentTypeSubitem::new(cx, "Простой текст", vec!["text/plain"]),
-                    ContentTypeSubitem::new(cx, "CSV", vec!["text/csv"]),
-                    ContentTypeSubitem::new(cx, "HTML", vec!["text/html"]),
-                    ContentTypeSubitem::new(cx, "CSS", vec!["text/css"]),
-                    ContentTypeSubitem::new(cx, "Другие", Vec::new()),
+                    ContentTypeSubitem::new(cx, get_translation("mime_text_plain", None), vec!["text/plain"]),
+                    ContentTypeSubitem::new(cx, get_translation("mime_text_csv", None), vec!["text/csv"]),
+                    ContentTypeSubitem::new(cx, get_translation("mime_text_html", None), vec!["text/html"]),
+                    ContentTypeSubitem::new(cx, get_translation("mime_text_css", None), vec!["text/css"]),
+                    ContentTypeSubitem::new(cx, get_translation("mime_other", None), Vec::new()),
                 ],
             ),
             ContentTypeItem::new(
                 cx,
-                "Изображения",
+                get_translation("mime_image", None),
                 "image",
                 vec![
-                    ContentTypeSubitem::new(cx, "JPEG", vec!["image/jpeg"]),
-                    ContentTypeSubitem::new(cx, "PNG", vec!["image/png"]),
-                    ContentTypeSubitem::new(cx, "GIF", vec!["image/gif"]),
-                    ContentTypeSubitem::new(cx, "BMP", vec!["image/bmp"]),
-                    ContentTypeSubitem::new(cx, "TIFF", vec!["image/tiff"]),
-                    ContentTypeSubitem::new(cx, "SVG", vec!["image/svg+xml"]),
-                    ContentTypeSubitem::new(cx, "WebP", vec!["image/webp"]),
+                    ContentTypeSubitem::new(cx, get_translation("mime_image_jpeg", None), vec!["image/jpeg"]),
+                    ContentTypeSubitem::new(cx, get_translation("mime_image_png", None), vec!["image/png"]),
+                    ContentTypeSubitem::new(cx, get_translation("mime_image_gif", None), vec!["image/gif"]),
+                    ContentTypeSubitem::new(cx, get_translation("mime_image_bmp", None), vec!["image/bmp"]),
+                    ContentTypeSubitem::new(cx, get_translation("mime_image_tiff", None), vec!["image/tiff"]),
+                    ContentTypeSubitem::new(cx, get_translation("mime_image_svg", None), vec!["image/svg+xml"]),
+                    ContentTypeSubitem::new(cx, get_translation("mime_image_webp", None), vec!["image/webp"]),
                     ContentTypeSubitem::new(
                         cx,
-                        "HEIF/HEIC",
+                        get_translation("mime_image_heif_heic", None),
                         vec![
                             "image/heif",
                             "image/heic",
@@ -111,38 +113,38 @@ pub fn content_type_filter_items(cx: Scope) -> &Signal<Vec<ContentTypeItem<'_>>>
                             "image/heic-sequence",
                         ],
                     ),
-                    ContentTypeSubitem::new(cx, "Другие", Vec::new()),
+                    ContentTypeSubitem::new(cx, get_translation("mime_other", None), Vec::new()),
                 ],
             ),
             ContentTypeItem::new(
                 cx,
-                "Аудио",
+                get_translation("mime_audio", None),
                 "audio",
                 vec![
-                    ContentTypeSubitem::new(cx, "MP3", vec!["audio/mpeg"]),
-                    ContentTypeSubitem::new(cx, "MP4 (аудио)", vec!["audio/mp4"]),
-                    ContentTypeSubitem::new(cx, "FLAC", vec!["audio/x-oggflac", "audio/x-flac"]),
-                    ContentTypeSubitem::new(cx, "OGG", vec!["audio/ogg", "audio/x-oggpcm"]),
-                    ContentTypeSubitem::new(cx, "Opus", vec!["audio/opus"]),
-                    ContentTypeSubitem::new(cx, "Vorbis", vec!["audio/vorbis"]),
-                    ContentTypeSubitem::new(cx, "MIDI", vec!["audio/midi"]),
-                    ContentTypeSubitem::new(cx, "WAV", vec!["audio/vnd.wave", "audio/x-wav"]),
-                    ContentTypeSubitem::new(cx, "Другие", Vec::new()),
+                    ContentTypeSubitem::new(cx, get_translation("mime_audio_mp3", None), vec!["audio/mpeg"]),
+                    ContentTypeSubitem::new(cx, get_translation("mime_audio_mp4", None), vec!["audio/mp4"]),
+                    ContentTypeSubitem::new(cx, get_translation("mime_audio_flac", None), vec!["audio/x-oggflac", "audio/x-flac"]),
+                    ContentTypeSubitem::new(cx, get_translation("mime_audio_ogg", None), vec!["audio/ogg", "audio/x-oggpcm"]),
+                    ContentTypeSubitem::new(cx, get_translation("mime_audio_opus", None), vec!["audio/opus"]),
+                    ContentTypeSubitem::new(cx, get_translation("mime_audio_vorbis", None), vec!["audio/vorbis"]),
+                    ContentTypeSubitem::new(cx, get_translation("mime_audio_midi", None), vec!["audio/midi"]),
+                    ContentTypeSubitem::new(cx, get_translation("mime_audio_wav", None), vec!["audio/vnd.wave", "audio/x-wav"]),
+                    ContentTypeSubitem::new(cx, get_translation("mime_other", None), Vec::new()),
                 ],
             ),
             ContentTypeItem::new(
                 cx,
-                "Видео",
+                get_translation("mime_video", None),
                 "video",
                 vec![
-                    ContentTypeSubitem::new(cx, "MP4", vec!["video/mp4", "video/x-m4v"]),
-                    ContentTypeSubitem::new(cx, "3GPP(2)", vec!["video/3gpp", "video/3gpp2"]),
-                    ContentTypeSubitem::new(cx, "QuickTime", vec!["video/quicktime"]),
-                    ContentTypeSubitem::new(cx, "FLV (Flash)", vec!["video/x-flv"]),
-                    ContentTypeSubitem::new(cx, "Daala", vec!["video/daala"]),
+                    ContentTypeSubitem::new(cx, get_translation("mime_video_mp4", None), vec!["video/mp4", "video/x-m4v"]),
+                    ContentTypeSubitem::new(cx, get_translation("mime_video_3gpp", None), vec!["video/3gpp", "video/3gpp2"]),
+                    ContentTypeSubitem::new(cx, get_translation("mime_video_quicktime", None), vec!["video/quicktime"]),
+                    ContentTypeSubitem::new(cx, get_translation("mime_video_flv", None), vec!["video/x-flv"]),
+                    ContentTypeSubitem::new(cx, get_translation("mime_video_daala", None), vec!["video/daala"]),
                     ContentTypeSubitem::new(
                         cx,
-                        "OGG",
+                        get_translation("mime_video_ogg", None),
                         vec![
                             "video/x-ogguvs",
                             "video/x-ogm",
@@ -151,24 +153,24 @@ pub fn content_type_filter_items(cx: Scope) -> &Signal<Vec<ContentTypeItem<'_>>>
                             "video/x-oggyuv",
                         ],
                     ),
-                    ContentTypeSubitem::new(cx, "Theora", vec!["video/theora"]),
-                    ContentTypeSubitem::new(cx, "Другие", Vec::new()),
+                    ContentTypeSubitem::new(cx, get_translation("mime_video_theora", None), vec!["video/theora"]),
+                    ContentTypeSubitem::new(cx, get_translation("mime_other", None), Vec::new()),
                 ],
             ),
             ContentTypeItem::new(
                 cx,
-                "Другие",
+                get_translation("mime_application", None),
                 "application",
                 vec![
-                    ContentTypeSubitem::new(cx, "PDF", vec!["application/pdf"]),
+                    ContentTypeSubitem::new(cx, get_translation("mime_application_pdf", None), vec!["application/pdf"]),
                     ContentTypeSubitem::new(
                         cx,
-                        "Microsoft Word (до 2007)",
+                        get_translation("mime_application_word_old", None),
                         vec!["application/msword"],
                     ),
                     ContentTypeSubitem::new(
                         cx,
-                        "Microsoft Word (с 2007)",
+                        get_translation("mime_application_word_new", None),
                         vec![
                             "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
                             "application/vnd.openxmlformats-officedocument.wordprocessingml.template",
@@ -178,12 +180,12 @@ pub fn content_type_filter_items(cx: Scope) -> &Signal<Vec<ContentTypeItem<'_>>>
                     ),
                     ContentTypeSubitem::new(
                         cx,
-                        "Microsoft Excel (до 2007)",
+                        get_translation("mime_application_excel_old", None),
                         vec!["application/vnd.ms-excel"],
                     ),
                     ContentTypeSubitem::new(
                         cx,
-                        "Microsoft Excel (с 2007)",
+                        get_translation("mime_application_excel_new", None),
                         vec![
                             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                             "application/vnd.openxmlformats-officedocument.spreadsheetml.template",
@@ -195,12 +197,12 @@ pub fn content_type_filter_items(cx: Scope) -> &Signal<Vec<ContentTypeItem<'_>>>
                     ),
                     ContentTypeSubitem::new(
                         cx,
-                        "Microsoft PowerPoint (до 2007)",
+                        get_translation("mime_application_powerpoint_old", None),
                         vec!["application/vnd.ms-powerpoint"],
                     ),
                     ContentTypeSubitem::new(
                         cx,
-                        "Microsoft PowerPoint (с 2007)",
+                        get_translation("mime_application_powerpoint_new", None),
                         vec![
                             "application/vnd.openxmlformats-officedocument.presentationml.presentation",
                             "application/vnd.openxmlformats-officedocument.presentationml.template",
@@ -213,7 +215,7 @@ pub fn content_type_filter_items(cx: Scope) -> &Signal<Vec<ContentTypeItem<'_>>>
                     ),
                     ContentTypeSubitem::new(
                         cx,
-                        "OpenDocument Text",
+                        get_translation("mime_application_odt", None),
                         vec![
                             "application/vnd.oasis.opendocument.text",
                             "application/vnd.oasis.opendocument.text-template",
@@ -223,7 +225,7 @@ pub fn content_type_filter_items(cx: Scope) -> &Signal<Vec<ContentTypeItem<'_>>>
                     ),
                     ContentTypeSubitem::new(
                         cx,
-                        "OpenDocument Spreadsheet",
+                        get_translation("mime_application_ods", None),
                         vec![
                             "application/vnd.oasis.opendocument.spreadsheet",
                             "application/vnd.oasis.opendocument.spreadsheet-template",
@@ -232,7 +234,7 @@ pub fn content_type_filter_items(cx: Scope) -> &Signal<Vec<ContentTypeItem<'_>>>
                     ),
                     ContentTypeSubitem::new(
                         cx,
-                        "OpenDocument Presentation",
+                        get_translation("mime_application_odp", None),
                         vec![
                             "application/vnd.oasis.opendocument.presentation",
                             "application/vnd.oasis.opendocument.presentation-template",
@@ -241,7 +243,7 @@ pub fn content_type_filter_items(cx: Scope) -> &Signal<Vec<ContentTypeItem<'_>>>
                     ),
                     ContentTypeSubitem::new(
                         cx,
-                        "Apple Pages",
+                        get_translation("mime_application_apple_pages", None),
                         vec![
                             "application/vnd.apple.pages",
                             "application/vnd.apple.pages.13",
@@ -250,7 +252,7 @@ pub fn content_type_filter_items(cx: Scope) -> &Signal<Vec<ContentTypeItem<'_>>>
                     ),
                     ContentTypeSubitem::new(
                         cx,
-                        "Apple Numbers",
+                        get_translation("mime_application_apple_numbers", None),
                         vec![
                             "application/vnd.apple.numbers",
                             "application/vnd.apple.numbers.13",
@@ -259,33 +261,33 @@ pub fn content_type_filter_items(cx: Scope) -> &Signal<Vec<ContentTypeItem<'_>>>
                     ),
                     ContentTypeSubitem::new(
                         cx,
-                        "Apple Keynote",
+                        get_translation("mime_application_apple_keynote", None),
                         vec![
                             "application/vnd.apple.keynote",
                             "application/vnd.apple.keynote.13",
                             "application/vnd.apple.keynote.18",
                         ],
                     ),
-                    ContentTypeSubitem::new(cx, "ZIP", vec!["application/zip"]),
-                    ContentTypeSubitem::new(cx, "RAR", vec!["application/x-rar-compressed"]),
-                    ContentTypeSubitem::new(cx, "7-Zip", vec!["application/x-7z-compressed"]),
-                    ContentTypeSubitem::new(cx, "Gzip", vec!["application/gzip"]),
-                    ContentTypeSubitem::new(cx, "Zlib", vec!["application/zlib"]),
-                    ContentTypeSubitem::new(cx, "Другие", Vec::new()),
+                    ContentTypeSubitem::new(cx, get_translation("mime_application_zip", None), vec!["application/zip"]),
+                    ContentTypeSubitem::new(cx, get_translation("mime_application_rar", None), vec!["application/x-rar-compressed"]),
+                    ContentTypeSubitem::new(cx, get_translation("mime_application_7zip", None), vec!["application/x-7z-compressed"]),
+                    ContentTypeSubitem::new(cx, get_translation("mime_application_gzip", None), vec!["application/gzip"]),
+                    ContentTypeSubitem::new(cx, get_translation("mime_application_zlib", None), vec!["application/zlib"]),
+                    ContentTypeSubitem::new(cx, get_translation("mime_other", None), Vec::new()),
                 ],
             ),
         ],
     )
 }
 
-pub fn get_content_type_request_items<'a>(
-    items: &'a ReadSignal<Vec<ContentTypeItem<'a>>>,
+pub fn get_content_type_request_items<'a, S: AsRef<str>>(
+    items: &'a ReadSignal<Vec<ContentTypeItem<'a, S>>>,
 ) -> Vec<ContentTypeRequestItem> {
     items
         .get()
         .iter()
         .map(|item| {
-            let get_subtypes = |item: &ContentTypeItem, enabled: bool| {
+            let get_subtypes = |item: &ContentTypeItem<S>, enabled: bool| {
                 item.subtypes
                     .get()
                     .iter()
@@ -319,9 +321,9 @@ pub fn get_content_type_request_items<'a>(
         .collect()
 }
 
-pub fn load_from_content_type_request_items<'a>(
+pub fn load_from_content_type_request_items<'a, S: AsRef<str>>(
     request_items: &[ContentTypeRequestItem],
-    items: &'a Signal<Vec<ContentTypeItem<'a>>>,
+    items: &'a Signal<Vec<ContentTypeItem<'a, S>>>,
 ) {
     let items_value = items.get();
     let items_hm: HashMap<_, _> = items_value.iter().map(|x| (x.type_, x)).collect();
@@ -386,12 +388,16 @@ pub fn load_from_content_type_request_items<'a>(
 }
 
 #[component]
-pub fn ContentTypeFilter<'a, G: Html>(cx: Scope<'a>, props: ContentTypeFilterProps<'a>) -> View<G> {
+pub fn ContentTypeFilter<'a, S: AsRef<str> + Clone + Display, G: Html>(
+    cx: Scope<'a>,
+    props: ContentTypeFilterProps<'a, S>,
+) -> View<G> {
     view! { cx,
         fieldset {
-            legend { "Тип файла" }
+            legend { (get_translation("filter_file_type", None)) }
 
-            CheckboxFilter(text="Любой", id="content_type_disabled", value_enabled=props.disabled)
+            CheckboxFilter(text=get_translation("filter_file_type_any", None),
+                id="content_type_disabled", value_enabled=props.disabled)
 
             (if !*props.disabled.get() {
                 view! { cx,
@@ -412,7 +418,7 @@ pub fn ContentTypeFilter<'a, G: Html>(cx: Scope<'a>, props: ContentTypeFilterPro
                                     summary {
                                         input(type="checkbox", id=item.id, name=item.id, prop:checked=*item.enabled.get(),
                                             prop:indeterminate=*item.indeterminate.get(), on:click=on_item_click) {}
-                                        label(for=item.id) { (item.text) }
+                                        label(for=item.id) { (item.text.to_string()) }
                                     }
 
                                     Keyed(
@@ -445,7 +451,7 @@ pub fn ContentTypeFilter<'a, G: Html>(cx: Scope<'a>, props: ContentTypeFilterPro
                                                 div(class="radio_checkbox_field") {
                                                     input(type="checkbox", id=subitem.id, name=subitem.id,
                                                         prop:checked=*subitem.enabled.get(), on:click=on_subitem_click) {}
-                                                    label(for=subitem.id) { (subitem.text) }
+                                                    label(for=subitem.id) { (subitem.text.to_string()) }
                                                 }
                                             }
                                         }

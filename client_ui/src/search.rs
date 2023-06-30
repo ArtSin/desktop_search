@@ -5,6 +5,7 @@ use common_lib::{
     search::{ImageQuery, PageType, SearchRequest, SearchResponse, TextQuery},
     settings::Settings,
 };
+use fluent_bundle::FluentArgs;
 use gloo_net::http::Request;
 use sycamore::{futures::spawn_local_scoped, prelude::*};
 use url::Url;
@@ -12,7 +13,7 @@ use wasm_bindgen::JsValue;
 use web_sys::window;
 
 use crate::{
-    app::{fetch, fetch_empty, widgets::StatusDialogState},
+    app::{fetch, fetch_empty, get_translation, widgets::StatusDialogState},
     search::{
         filters::{
             content_type::{
@@ -149,9 +150,10 @@ pub fn Search<'a, G: Html>(
                     status_dialog_state.set(StatusDialogState::None);
                 }
                 Err(e) => {
-                    status_dialog_state.set(StatusDialogState::Error(format!(
-                        "❌ Ошибка открытия диалога: {e:#?}",
-                    )));
+                    let error_args = FluentArgs::from_iter([("error", format!("{e:#?}"))]);
+                    let error_str =
+                        get_translation("dialog_opening_error", Some(&error_args)).to_string();
+                    status_dialog_state.set(StatusDialogState::Error(error_str));
                 }
             }
         });
@@ -256,9 +258,10 @@ pub fn Search<'a, G: Html>(
                     status_dialog_state.set(StatusDialogState::None);
                 }
                 Err(e) => {
-                    status_dialog_state.set(StatusDialogState::Error(format!(
-                        "❌ Ошибка открытия запроса: {e:#?}",
-                    )));
+                    let error_args = FluentArgs::from_iter([("error", format!("{e:#?}"))]);
+                    let error_str =
+                        get_translation("request_opening_error", Some(&error_args)).to_string();
+                    status_dialog_state.set(StatusDialogState::Error(error_str));
                 }
             }
         });
@@ -273,9 +276,10 @@ pub fn Search<'a, G: Html>(
                     status_dialog_state.set(StatusDialogState::None);
                 }
                 Err(e) => {
-                    status_dialog_state.set(StatusDialogState::Error(format!(
-                        "❌ Ошибка сохранения запроса: {e:#?}",
-                    )));
+                    let error_args = FluentArgs::from_iter([("error", format!("{e:#?}"))]);
+                    let error_str =
+                        get_translation("request_saving_error", Some(&error_args)).to_string();
+                    status_dialog_state.set(StatusDialogState::Error(error_str));
                 }
             }
         });
@@ -298,9 +302,9 @@ pub fn Search<'a, G: Html>(
                 }
                 Err(e) => {
                     search_results.set(Vec::new());
-                    status_dialog_state.set(StatusDialogState::Error(format!(
-                        "❌ Ошибка поиска: {e:#?}",
-                    )));
+                    let error_args = FluentArgs::from_iter([("error", format!("{e:#?}"))]);
+                    let error_str = get_translation("search_error", Some(&error_args)).to_string();
+                    status_dialog_state.set(StatusDialogState::Error(error_str));
                 }
             }
         })
@@ -315,8 +319,8 @@ pub fn Search<'a, G: Html>(
                         div {
                             button(form="search", type="button", on:click=toggle_filters) { "☰" }
                             input(form="search", type="search", id="query", name="query",
-                                placeholder="Поиск...", bind:value=query)
-                            button(form="search", type="submit", disabled=*any_invalid.get()) { "Искать" }
+                                placeholder=get_translation("search_placeholder", None), bind:value=query)
+                            button(form="search", type="submit", disabled=*any_invalid.get()) { (get_translation("search", None)) }
                         }
                     }
                 }
@@ -324,8 +328,8 @@ pub fn Search<'a, G: Html>(
                     view! { cx,
                         div {
                             button(form="search", type="button", on:click=toggle_filters) { "☰" }
-                            button(form="search", type="button", on:click=select_file) { "Выбрать файл" }
-                            button(form="search", type="submit", disabled=*any_invalid.get()) { "Искать" }
+                            button(form="search", type="button", on:click=select_file) { (get_translation("select_file", None)) }
+                            button(form="search", type="submit", disabled=*any_invalid.get()) { (get_translation("search", None)) }
                         }
                         (if !query_image_path.get().as_os_str().is_empty() {
                             let img_url = get_local_file_url(&*query_image_path.get(), None, false);
@@ -345,52 +349,55 @@ pub fn Search<'a, G: Html>(
             aside(style={if *display_filters.get() { "display: block;" } else { "display: none;" }}) {
                 form(id="search", on:submit=search_without_page, action="javascript:void(0);") {
                     fieldset {
-                        legend { "Сохранённые запросы" }
+                        legend { (get_translation("saved_requests", None)) }
                         div(id="saved_requests") {
-                            button(form="search", type="button", on:click=open_search_request) { "Открыть" }
-                            button(form="search", type="button", on:click=save_search_request) { "Сохранить" }
+                            button(form="search", type="button", on:click=open_search_request) { (get_translation("open", None)) }
+                            button(form="search", type="button", on:click=save_search_request) { (get_translation("save", None)) }
                         }
                     }
                     fieldset {
-                        legend { "Тип запроса" }
-                        RadioFilter(text="По тексту", name="query_type", id="query_type_text",
+                        legend { (get_translation("query_type", None)) }
+                        RadioFilter(text=get_translation("query_type_text", None),
+                            name="query_type", id="query_type_text",
                             value_signal=query_type, value=QueryType::Text, default=true)
-                        RadioFilter(text="По изображению", name="query_type", id="query_type_image",
+                        RadioFilter(text=get_translation("query_type_image", None),
+                            name="query_type", id="query_type_image",
                             value_signal=query_type, value=QueryType::Image, default=false)
                     }
                     (match *query_type.get() {
                         QueryType::Text => {
                             view! { cx,
                                 fieldset {
-                                    legend { "Тип поиска" }
-                                    CheckboxFilter(text="Поиск по содержимому", id="content", value_enabled=content_enabled)
-                                    CheckboxFilter(text="Семантический поиск по тексту", id="text_search",
-                                        value_enabled=text_search_enabled)
-                                    CheckboxFilter(text="Семантический поиск по изображениям", id="image_search",
-                                        value_enabled=image_search_enabled)
-                                    CheckboxFilter(text="Переранжирование", id="reranking",
-                                        value_enabled=reranking_enabled)
+                                    legend { (get_translation("search_type", None)) }
+                                    CheckboxFilter(text=get_translation("content_search", None),
+                                        id="content", value_enabled=content_enabled)
+                                    CheckboxFilter(text=get_translation("semantic_text_search", None),
+                                        id="text_search", value_enabled=text_search_enabled)
+                                    CheckboxFilter(text=get_translation("semantic_image_search", None),
+                                        id="image_search", value_enabled=image_search_enabled)
+                                    CheckboxFilter(text=get_translation("reranking", None),
+                                        id="reranking", value_enabled=reranking_enabled)
                                 }
 
                                 details {
-                                    summary { "Количество страниц семантического поиска" }
+                                    summary { (get_translation("semantic_search_page_count", None)) }
 
-                                    RangeWidget(legend="По тексту", id="text_search_pages",
-                                        min=1, max=20, step=1, value=text_search_pages)
-                                    RangeWidget(legend="По изображениям", id="image_search_pages",
-                                        min=1, max=20, step=1, value=image_search_pages)
+                                    RangeWidget(legend=get_translation("text_search_pages", None),
+                                        id="text_search_pages", min=1, max=20, step=1, value=text_search_pages)
+                                    RangeWidget(legend=get_translation("image_search_pages", None),
+                                        id="image_search_pages", min=1, max=20, step=1, value=image_search_pages)
                                 }
 
                                 details {
-                                    summary { "Коэффициенты поиска" }
+                                    summary { (get_translation("search_coefficients", None)) }
 
-                                    RangeWidget(legend="По содержимому", id="query_coeff",
+                                    RangeWidget(legend=get_translation("query_coeff", None), id="query_coeff",
                                         min=1.0, max=10.0, step=0.1, value=query_coeff)
-                                    RangeWidget(legend="Семантический по тексту", id="text_search_coeff",
+                                    RangeWidget(legend=get_translation("text_search_coeff", None), id="text_search_coeff",
                                         min=1.0, max=10.0, step=0.1, value=text_search_coeff)
-                                    RangeWidget(legend="Семантический по изображениям", id="image_search_coeff",
+                                    RangeWidget(legend=get_translation("image_search_coeff", None), id="image_search_coeff",
                                         min=1.0, max=10.0, step=0.1, value=image_search_coeff)
-                                    RangeWidget(legend="Переранжирование", id="reranking_coeff",
+                                    RangeWidget(legend=get_translation("reranking_coeff", None), id="reranking_coeff",
                                         min=0.1, max=5.0, step=0.1, value=reranking_coeff)
                                 }
                             }
@@ -398,33 +405,35 @@ pub fn Search<'a, G: Html>(
                         QueryType::Image => {
                             view! { cx,
                                 details {
-                                    summary { "Количество страниц семантического поиска" }
+                                    summary { (get_translation("semantic_search_page_count", None)) }
 
-                                    RangeWidget(legend="По изображениям", id="image_search_pages",
-                                        min=1, max=20, step=1, value=image_search_pages)
+                                    RangeWidget(legend=get_translation("image_search_pages", None),
+                                        id="image_search_pages", min=1, max=20, step=1, value=image_search_pages)
                                 }
                             }
                         }
                     })
 
-                    PathFilter(legend="Искать в папке", id="path_prefix", value=path_prefix,
-                        status_dialog_state=status_dialog_state)
+                    PathFilter(legend=get_translation("search_in_folder", None), id="path_prefix",
+                        value=path_prefix, status_dialog_state=status_dialog_state)
 
                     ContentTypeFilter(items=content_type_items, disabled=content_type_disabled)
 
                     details {
-                        summary { "Основные свойства файла" }
+                        summary { (get_translation("main_file_properties", None)) }
 
                         fieldset {
-                            legend { "Текстовый поиск" }
-                            CheckboxFilter(text="Путь файла", id="path", value_enabled=path_enabled)
-                            CheckboxFilter(text="Хеш", id="hash", value_enabled=hash_enabled)
+                            legend { (get_translation("filter_text_search", None)) }
+                            CheckboxFilter(text=get_translation("filter_file_path", None),
+                                id="path", value_enabled=path_enabled)
+                            CheckboxFilter(text=get_translation("filter_hash", None),
+                                id="hash", value_enabled=hash_enabled)
                         }
 
-                        DateTimeFilter(legend="Дата и время изменения", id="modified",
-                            value_from=modified_from, value_to=modified_to, valid=modified_valid)
+                        DateTimeFilter(legend=get_translation("filter_modification_datetime", None),
+                            id="modified", value_from=modified_from, value_to=modified_to, valid=modified_valid)
 
-                        NumberFilter(legend="Размер файла (МиБ)", id="size",
+                        NumberFilter(legend=get_translation("filter_file_size", None), id="size",
                             min=MAX_FILE_SIZE_MIN, max=MAX_FILE_SIZE_MAX,
                             value_from=size_from, value_to=size_to, valid=size_valid)
                     }
@@ -446,7 +455,7 @@ pub fn Search<'a, G: Html>(
 
                     view! { cx,
                         h3 {
-                            "Возможный запрос: "
+                            (get_translation("possible_query", None)) " "
                             a(on:click=change_query, href="javascript:void(0);",
                                 dangerously_set_inner_html=&highlight)
                         }
@@ -458,17 +467,17 @@ pub fn Search<'a, G: Html>(
                 (if *no_searches.get() {
                     view! { cx,
                         div(style="text-align: center;") {
-                            p { "Перед началом работы выберите индексируемые папки на вкладке \"Настройки\" и сохраните их." }
-                            p { "Затем проиндексируйте их на вкладке \"Индексация\"." }
-                            p { "Для поиска выберите тип запроса слева, введите текст запроса или выберите изображение выше." }
-                            p { "При необходимости выберите тип поиска, тип файлов, папку поиска, дополнительные фильтры слева." }
+                            p { (get_translation("start_text_1", None)) }
+                            p { (get_translation("start_text_2", None)) }
+                            p { (get_translation("start_text_3", None)) }
+                            p { (get_translation("start_text_4", None)) }
                         }
                     }
                 } else {
                     view! { cx,
                         (if search_results.get().is_empty() {
                             view! { cx,
-                                h3(style="text-align: center;") { "Ничего не найдено" }
+                                h3(style="text-align: center;") { (get_translation("nothing_found", None)) }
                             }
                         } else {
                             view! { cx,
@@ -499,11 +508,11 @@ where
                 key=|x| *x,
                 view=move |cx, x| {
                     let text = match x {
-                        PageType::First => "<< Первая".to_owned(),
-                        PageType::Previous(_) => "< Предыдущая".to_owned(),
-                        PageType::Next(_) => "Следующая >".to_owned(),
-                        PageType::Last(_) => "Последняя >>".to_owned(),
-                        PageType::Current(p) | PageType::Other(p) => (p + 1).to_string(),
+                        PageType::First => get_translation("page_first", None),
+                        PageType::Previous(_) => get_translation("page_previous", None),
+                        PageType::Next(_) => get_translation("page_next", None),
+                        PageType::Last(_) => get_translation("page_last", None),
+                        PageType::Current(p) | PageType::Other(p) => (p + 1).to_string().into(),
                     };
 
                     let switch_page = move |_| {
@@ -574,7 +583,7 @@ fn Preview<'a, G: Html>(
                                 source(src=object_url)
 
                                 p(style="text-align: center;") {
-                                    "Предпросмотр файла не поддерживается"
+                                    (get_translation("preview_not_supported", None))
                                 }
                             }
                         }
@@ -586,7 +595,7 @@ fn Preview<'a, G: Html>(
                                 source(src=object_url)
 
                                 p(style="text-align: center;") {
-                                    "Предпросмотр файла не поддерживается"
+                                    (get_translation("preview_not_supported", None))
                                 }
                             }
                         }
@@ -613,9 +622,9 @@ fn Preview<'a, G: Html>(
                                     status_dialog_state.set(StatusDialogState::None);
                                 }
                                 Err(e) => {
-                                    status_dialog_state.set(StatusDialogState::Error(format!(
-                                        "❌ Ошибка получения файла: {e:#?}",
-                                    )));
+                                    let error_args = FluentArgs::from_iter([("error", format!("{e:#?}"))]);
+                                    let error_str = get_translation("file_loading_error", Some(&error_args)).to_string();
+                                    status_dialog_state.set(StatusDialogState::Error(error_str));
                                 }
                             }
                         });
@@ -629,7 +638,7 @@ fn Preview<'a, G: Html>(
                         view! { cx,
                             object(id="preview_object", data=object_url) {
                                 p(style="text-align: center;") {
-                                    "Предпросмотр файла не поддерживается"
+                                    (get_translation("preview_not_supported", None))
                                 }
                             }
                         }

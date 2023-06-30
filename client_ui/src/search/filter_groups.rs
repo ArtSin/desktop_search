@@ -5,6 +5,8 @@ use common_lib::{
 };
 use sycamore::prelude::*;
 
+use crate::app::get_translation;
+
 use super::filters::{
     CheckboxFilter, CheckboxOptionFilter, DateTimeFilter, NumberFilter, SelectFilter,
     SelectOptionFilter,
@@ -175,55 +177,59 @@ pub fn ImageFilters<'a, G: Html>(cx: Scope<'a>, data: &'a Signal<ImageFiltersDat
     let resolution_unit_options = create_signal(
         cx,
         vec![
-            (ResolutionUnit::Inch, "дюйм"),
-            (ResolutionUnit::Cm, "сантиметр"),
+            (ResolutionUnit::Inch, get_translation("inch", None)),
+            (ResolutionUnit::Cm, get_translation("cm", None)),
         ],
     );
 
     view! { cx,
         details {
-            summary { "Свойства изображения" }
+            summary { (get_translation("image_properties", None)) }
 
             fieldset {
-                legend { "Текстовый поиск" }
-                CheckboxFilter(text="Производитель устройства", id="image_make", value_enabled=data.get().image_make_enabled)
-                CheckboxFilter(text="Модель устройства", id="image_model", value_enabled=data.get().image_model_enabled)
-                CheckboxFilter(text="Программное обеспечение", id="image_software", value_enabled=data.get().image_software_enabled)
+                legend { (get_translation("filter_text_search", None)) }
+                CheckboxFilter(text=get_translation("filter_device_manufacturer", None),
+                    id="image_make", value_enabled=data.get().image_make_enabled)
+                CheckboxFilter(text=get_translation("filter_device_model", None),
+                    id="image_model", value_enabled=data.get().image_model_enabled)
+                CheckboxFilter(text=get_translation("filter_image_software", None),
+                    id="image_software", value_enabled=data.get().image_software_enabled)
             }
 
-            NumberFilter(legend="Ширина (пиксели)", id="width",
+            NumberFilter(legend=get_translation("filter_width", None), id="width",
                 min=IMAGE_SIZE_MIN, max=IMAGE_SIZE_MAX,
                 value_from=data.get().width_from, value_to=data.get().width_to, valid=data.get().width_valid)
 
-            NumberFilter(legend="Высота (пиксели)", id="height",
+            NumberFilter(legend=get_translation("filter_height", None), id="height",
                 min=IMAGE_SIZE_MIN, max=IMAGE_SIZE_MAX,
                 value_from=data.get().height_from, value_to=data.get().height_to, valid=data.get().height_valid)
 
-            NumberFilter(legend="Разрешение (X)", id="x_resolution",
+            NumberFilter(legend=get_translation("filter_x_resolution", None), id="x_resolution",
                 min=RESOLUTION_MIN, max=RESOLUTION_MAX,
                 value_from=data.get().x_resolution_from, value_to=data.get().x_resolution_to, valid=data.get().x_resolution_valid)
 
-            NumberFilter(legend="Разрешение (Y)", id="y_resolution",
+            NumberFilter(legend=get_translation("filter_y_resolution", None), id="y_resolution",
                 min=RESOLUTION_MIN, max=RESOLUTION_MAX,
                 value_from=data.get().y_resolution_from, value_to=data.get().y_resolution_to, valid=data.get().y_resolution_valid)
 
-            NumberFilter(legend="F-число", id="f_number",
+            NumberFilter(legend=get_translation("filter_f_number", None), id="f_number",
                 min=F_NUMBER_MIN, max=F_NUMBER_MAX,
                 value_from=data.get().f_number_from, value_to=data.get().f_number_to, valid=data.get().f_number_valid)
 
-            NumberFilter(legend="Фокусное расстояние (мм)", id="focal_length",
+            NumberFilter(legend=get_translation("filter_focal_length", None), id="focal_length",
                 min=FOCAL_LENGTH_MIN, max=FOCAL_LENGTH_MAX,
                 value_from=data.get().focal_length_from, value_to=data.get().focal_length_to, valid=data.get().focal_length_valid)
 
-            NumberFilter(legend="Выдержка (с)", id="exposure_time",
+            NumberFilter(legend=get_translation("filter_exposure_time", None), id="exposure_time",
                 min=EXPOSURE_TIME_MIN, max=EXPOSURE_TIME_MAX,
                 value_from=data.get().exposure_time_from, value_to=data.get().exposure_time_to, valid=data.get().exposure_time_valid)
 
             fieldset {
-                legend { "Другое" }
-                SelectFilter(text="Разрешение: пиксели на ", id="resolution_unit",
+                legend { (get_translation("other", None)) }
+                SelectFilter(text=get_translation("filter_resolution_unit", None), id="resolution_unit",
                     options=resolution_unit_options, value=data.get().resolution_unit)
-                CheckboxOptionFilter(text="Вспышка: ", id="flash_fired", value_enabled=data.get().flash_fired)
+                CheckboxOptionFilter(text=get_translation("filter_flash", None), id="flash_fired",
+                    value_enabled=data.get().flash_fired)
             }
         }
     }
@@ -326,40 +332,52 @@ pub fn MultimediaFilters<'a, G: Html>(
     let audio_channel_type_options = create_signal(
         cx,
         vec![
-            (AudioChannelType::Mono, "моно"),
-            (AudioChannelType::Stereo, "стерео"),
-            (AudioChannelType::_5_1, "5.1"),
-            (AudioChannelType::_7_1, "7.1"),
-            (AudioChannelType::_16, "16 каналов"),
-            (AudioChannelType::Other, "неизвестно"),
+            (AudioChannelType::Mono, get_translation("audio_mono", None)),
+            (
+                AudioChannelType::Stereo,
+                get_translation("audio_stereo", None),
+            ),
+            (AudioChannelType::_5_1, get_translation("audio_5_1", None)),
+            (AudioChannelType::_7_1, get_translation("audio_7_1", None)),
+            (AudioChannelType::_16, get_translation("audio_16", None)),
+            (
+                AudioChannelType::Other,
+                get_translation("audio_other", None),
+            ),
         ],
     );
 
     view! { cx,
         details {
-            summary { "Свойства мультимедиа" }
+            summary { (get_translation("multimedia_properties", None)) }
 
             fieldset {
-                legend { "Текстовый поиск" }
-                CheckboxFilter(text="Исполнитель", id="artist", value_enabled=data.get().artist_enabled)
-                CheckboxFilter(text="Альбом", id="album", value_enabled=data.get().album_enabled)
-                CheckboxFilter(text="Жанр", id="genre", value_enabled=data.get().genre_enabled)
-                CheckboxFilter(text="Номер трека", id="track_number", value_enabled=data.get().track_number_enabled)
-                CheckboxFilter(text="Номер диска", id="disc_number", value_enabled=data.get().disc_number_enabled)
-                CheckboxFilter(text="Дата выпуска", id="release_date", value_enabled=data.get().release_date_enabled)
+                legend { (get_translation("filter_text_search", None)) }
+                CheckboxFilter(text=get_translation("filter_artist", None),
+                    id="artist", value_enabled=data.get().artist_enabled)
+                CheckboxFilter(text=get_translation("filter_album", None),
+                    id="album", value_enabled=data.get().album_enabled)
+                CheckboxFilter(text=get_translation("filter_genre", None),
+                    id="genre", value_enabled=data.get().genre_enabled)
+                CheckboxFilter(text=get_translation("filter_track_number", None),
+                    id="track_number", value_enabled=data.get().track_number_enabled)
+                CheckboxFilter(text=get_translation("filter_disc_number", None),
+                    id="disc_number", value_enabled=data.get().disc_number_enabled)
+                CheckboxFilter(text=get_translation("filter_release_date", None),
+                    id="release_date", value_enabled=data.get().release_date_enabled)
             }
 
-            NumberFilter(legend="Длительность (мин)", id="duration_min",
+            NumberFilter(legend=get_translation("filter_duration_min", None), id="duration_min",
                 min=DURATION_MIN_MIN, max=DURATION_MIN_MAX,
                 value_from=data.get().duration_min_from, value_to=data.get().duration_min_to, valid=data.get().duration_min_valid)
 
-            NumberFilter(legend="Частота дискретизации аудио", id="audio_sample_rate",
+            NumberFilter(legend=get_translation("filter_audio_sample_rate", None), id="audio_sample_rate",
                 min=AUDIO_SAMPLE_RATE_MIN, max=AUDIO_SAMPLE_RATE_MAX,
                 value_from=data.get().audio_sample_rate_from, value_to=data.get().audio_sample_rate_to, valid=data.get().audio_sample_rate_valid)
 
             fieldset {
-                legend { "Другое" }
-                SelectOptionFilter(text="Тип аудиоканала", id="audio_channel_type",
+                legend { (get_translation("other", None)) }
+                SelectOptionFilter(text=get_translation("filter_audio_channel_type", None), id="audio_channel_type",
                     options=audio_channel_type_options, value=data.get().audio_channel_type)
             }
         }
@@ -477,31 +495,36 @@ pub fn DocumentFilters<'a, G: Html>(
 ) -> View<G> {
     view! { cx,
         details {
-            summary { "Свойства документа" }
+            summary { (get_translation("document_properties", None)) }
 
             fieldset {
-                legend { "Текстовый поиск" }
-                CheckboxFilter(text="Заголовок", id="title", value_enabled=data.get().title_enabled)
-                CheckboxFilter(text="Создатель", id="creator", value_enabled=data.get().creator_enabled)
+                legend { (get_translation("filter_text_search", None)) }
+                CheckboxFilter(text=get_translation("filter_title", None),
+                    id="title", value_enabled=data.get().title_enabled)
+                CheckboxFilter(text=get_translation("filter_creator", None),
+                    id="creator", value_enabled=data.get().creator_enabled)
             }
 
-            DateTimeFilter(legend="Дата и время создания", id="doc_created",
+            DateTimeFilter(legend=get_translation("filter_doc_created", None), id="doc_created",
                 value_from=data.get().doc_created_from, value_to=data.get().doc_created_to,
                 valid=data.get().doc_created_valid)
 
-            DateTimeFilter(legend="Дата и время изменения", id="doc_modified",
+            DateTimeFilter(legend=get_translation("filter_doc_modified", None), id="doc_modified",
                 value_from=data.get().doc_modified_from, value_to=data.get().doc_modified_to,
                 valid=data.get().doc_modified_valid)
 
-            NumberFilter(legend="Количество страниц", id="num_pages", min=1, max=u32::MAX,
+            NumberFilter(legend=get_translation("filter_num_pages", None), id="num_pages",
+                min=1, max=u32::MAX,
                 value_from=data.get().num_pages_from, value_to=data.get().num_pages_to,
                 valid=data.get().num_pages_valid)
 
-            NumberFilter(legend="Количество слов", id="num_words", min=1, max=u32::MAX,
-            value_from=data.get().num_words_from, value_to=data.get().num_words_to,
+            NumberFilter(legend=get_translation("filter_num_words", None), id="num_words",
+                min=1, max=u32::MAX,
+                value_from=data.get().num_words_from, value_to=data.get().num_words_to,
                 valid=data.get().num_words_valid)
 
-            NumberFilter(legend="Количество символов", id="num_characters", min=1, max=u32::MAX,
+            NumberFilter(legend=get_translation("filter_num_characters", None), id="num_characters",
+                min=1, max=u32::MAX,
                 value_from=data.get().num_characters_from, value_to=data.get().num_characters_to,
                 valid=data.get().num_characters_valid)
         }

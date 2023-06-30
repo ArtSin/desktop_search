@@ -1,11 +1,12 @@
 use std::{net::SocketAddr, str::FromStr};
 
 use common_lib::settings::{NNServerSettings, Settings};
+use fluent_bundle::FluentArgs;
 use sycamore::{futures::spawn_local_scoped, prelude::*};
 use url::Url;
 use wasm_bindgen::JsValue;
 
-use crate::app::{fetch, fetch_empty, widgets::StatusDialogState};
+use crate::app::{fetch, fetch_empty, get_translation, widgets::StatusDialogState};
 
 use self::widgets::{
     CheckboxSetting, DirectoryItem, DirectoryList, NNSetting, NNSettingsData, NumberSetting,
@@ -199,9 +200,10 @@ pub fn Settings<'a, G: Html>(
                 status_dialog_state.set(StatusDialogState::None);
             }
             Err(e) => {
-                status_dialog_state.set(StatusDialogState::Error(format!(
-                    "❌ Ошибка загрузки настроек: {e:#?}",
-                )));
+                let error_args = FluentArgs::from_iter([("error", format!("{e:#?}"))]);
+                let error_str =
+                    get_translation("settings_loading_error", Some(&error_args)).to_string();
+                status_dialog_state.set(StatusDialogState::Error(error_str));
             }
         }
     });
@@ -247,15 +249,17 @@ pub fn Settings<'a, G: Html>(
             };
 
             if let Err(e) = put_settings(&new_settings).await {
-                status_dialog_state.set(StatusDialogState::Error(format!(
-                    "❌ Ошибка сохранения настроек: {e:#?}",
-                )));
+                let error_args = FluentArgs::from_iter([("error", format!("{e:#?}"))]);
+                let error_str =
+                    get_translation("settings_saving_error", Some(&error_args)).to_string();
+                status_dialog_state.set(StatusDialogState::Error(error_str));
                 return;
             }
 
             settings.set(new_settings);
             update_settings();
-            status_dialog_state.set(StatusDialogState::Info("✅ Настройки сохранены".to_owned()));
+            let saved_str = get_translation("settings_saved", None).to_string();
+            status_dialog_state.set(StatusDialogState::Info(saved_str));
         })
     };
 
@@ -264,112 +268,106 @@ pub fn Settings<'a, G: Html>(
             main {
                 form(id="settings", on:submit=set_settings, action="javascript:void(0);") {
                     fieldset {
-                        legend { "Серверные настройки" }
-                        TextSetting(id="indexer_address", label="Адрес сервера индексации: ",
+                        legend { (get_translation("warning", None)) }
+                        p { (get_translation("settings_warning", None)) }
+                    }
+
+                    fieldset {
+                        legend { (get_translation("indexable_folders", None)) }
+                        DirectoryList(directory_list=indexing_directories,
+                            status_dialog_state=status_dialog_state)
+                        SimpleTextSetting(id="exclude_file_regex",
+                            label=get_translation("exclude_file_regex", None), value=exclude_file_regex)
+                    }
+
+                    fieldset {
+                        legend { (get_translation("server_settings", None)) }
+                        TextSetting(id="indexer_address", label=get_translation("indexer_address", None),
                             parse=SocketAddr::from_str,
                             value=indexer_address, valid=indexer_address_valid)
-                        TextSetting(id="elasticsearch_url", label="URL сервера Elasticsearch: ",
+                        TextSetting(id="elasticsearch_url", label=get_translation("elasticsearch_url", None),
                             parse=Url::parse,
                             value=elasticsearch_url, valid=elasticsearch_url_valid)
-                        TextSetting(id="tika_url", label="URL сервера Apache Tika: ",
+                        TextSetting(id="tika_url", label=get_translation("tika_url", None),
                             parse=Url::parse,
                             value=tika_url, valid=tika_url_valid)
-                        TextSetting(id="nn_server_url", label="URL сервера нейронных сетей: ",
+                        TextSetting(id="nn_server_url", label=get_translation("nn_server_url", None),
                             parse=Url::parse,
                             value=nn_server_url, valid=nn_server_url_valid)
-                        CheckboxSetting(id="open_on_start", label="Открывать интерфейс при запуске сервера: ",
+                        CheckboxSetting(id="open_on_start", label=get_translation("open_on_start", None),
                             value=open_on_start)
                     }
 
                     fieldset {
-                        legend { "Индексируемые папки" }
-                        DirectoryList(directory_list=indexing_directories,
-                            status_dialog_state=status_dialog_state)
-                        SimpleTextSetting(id="exclude_file_regex",
-                            label="Регулярное выражение для исключения файлов: ", value=exclude_file_regex)
-                    }
-
-                    fieldset {
-                        legend { "Настройки индексации" }
-                        CheckboxSetting(id="watcher_enabled", label="Отслеживать изменения файлов: ",
+                        legend { (get_translation("indexing_settings", None)) }
+                        CheckboxSetting(id="watcher_enabled", label=get_translation("watcher_enabled", None),
                             value=watcher_enabled)
                         NumberSetting(id="debouncer_timeout".to_owned(),
-                            label="Время задержки событий файловой системы (с): ".to_owned(),
+                            label=get_translation("debouncer_timeout", None),
                             min=DEBOUNCER_TIMEOUT_MIN, max=DEBOUNCER_TIMEOUT_MAX,
                             value=debouncer_timeout, valid=debouncer_timeout_valid)
                         NumberSetting(id="max_file_size".to_owned(),
-                            label="Максимальный размер файла (МиБ): ".to_owned(),
+                            label=get_translation("max_file_size", None),
                             min=MAX_FILE_SIZE_MIN, max=MAX_FILE_SIZE_MAX,
                             value=max_file_size, valid=max_file_size_valid)
                         NumberSetting(id="max_concurrent_files".to_owned(),
-                            label="Максимальное количество одновременно обрабатываемых документов: ".to_owned(),
+                            label=get_translation("max_concurrent_files", None),
                             min=MAX_CONCURRENT_FILES_MIN, max=MAX_CONCURRENT_FILES_MAX,
                             value=max_concurrent_files, valid=max_concurrent_files_valid)
                         NumberSetting(id="elasticsearch_batch_size".to_owned(),
-                            label="Количество отправляемых в Elasticsearch изменений за раз: ".to_owned(),
+                            label=get_translation("elasticsearch_batch_size", None),
                             min=ELASTICSEARCH_BATCH_SIZE_MIN, max=ELASTICSEARCH_BATCH_SIZE_MAX,
                             value=elasticsearch_batch_size, valid=elasticsearch_batch_size_valid)
                     }
 
                     fieldset {
-                        legend { "Настройки поиска" }
+                        legend { (get_translation("search_settings", None)) }
                         NumberSetting(id="results_per_page".to_owned(),
-                            label="Количество результатов на странице: ".to_owned(),
+                            label=get_translation("results_per_page", None),
                             min=RESULTS_PER_PAGE_MIN, max=RESULTS_PER_PAGE_MAX,
                             value=results_per_page, valid=results_per_page_valid)
                         NumberSetting(id="knn_candidates_multiplier".to_owned(),
-                            label="Множитель количества кандидатов kNN при семантическом поиске: ".to_owned(),
+                            label=get_translation("knn_candidates_multiplier", None),
                             min=KNN_CANDIDATES_MULTIPLIER_MIN, max=KNN_CANDIDATES_MULTIPLIER_MAX,
                             value=knn_candidates_multiplier, valid=knn_candidates_multiplier_valid)
                     }
 
                     fieldset {
-                        legend { "Настройки сервера нейронных сетей" }
-                        TextSetting(id="nn_server_address", label="Адрес сервера нейронных сетей: ",
+                        legend { (get_translation("nn_server_settings", None)) }
+                        TextSetting(id="nn_server_address", label=get_translation("nn_server_address", None),
                             parse=SocketAddr::from_str,
                             value=nn_server_address, valid=nn_server_address_valid)
-                        CheckboxSetting(id="text_search_enabled", label="Семантический поиск по тексту: ",
+                        CheckboxSetting(id="text_search_enabled", label=get_translation("text_search_enabled", None),
                             value=text_search_enabled)
-                        CheckboxSetting(id="image_search_enabled", label="Семантический поиск по изображениям: ",
+                        CheckboxSetting(id="image_search_enabled", label=get_translation("image_search_enabled", None),
                             value=image_search_enabled)
-                        CheckboxSetting(id="reranking_enabled", label="Переранжирование: ",
+                        CheckboxSetting(id="reranking_enabled", label=get_translation("reranking_enabled", None),
                             value=reranking_enabled)
-                        NNSetting(id="clip_image", label="CLIP (изображения)", data=clip_image_data)
-                        NNSetting(id="clip_text", label="CLIP (текст)", data=clip_text_data)
-                        NNSetting(id="minilm_text", label="MiniLM (текст)", data=minilm_text_data)
-                        NNSetting(id="minilm_rerank", label="MiniLM (переранжирование)", data=minilm_rerank_data)
+                        NNSetting(id="clip_image", label=get_translation("clip_image", None), data=clip_image_data)
+                        NNSetting(id="clip_text", label=get_translation("clip_text", None), data=clip_text_data)
+                        NNSetting(id="minilm_text", label=get_translation("minilm_text", None), data=minilm_text_data)
+                        NNSetting(id="minilm_rerank", label=get_translation("minilm_rerank", None), data=minilm_rerank_data)
                         NumberSetting(id="max_sentences".to_owned(),
-                            label="Максимальное количество обрабатываемых предложений: ".to_owned(),
+                            label=get_translation("max_sentences", None),
                             min=MAX_SENTENCES_MIN, max=MAX_SENTENCES_MAX,
                             value=max_sentences, valid=max_sentences_valid)
                         NumberSetting(id="window_size".to_owned(),
-                            label="Размер окна слов: ".to_owned(),
+                            label=get_translation("window_size", None),
                             min=WINDOW_SIZE_MIN, max=WINDOW_SIZE_MAX,
                             value=window_size, valid=window_size_valid)
                         NumberSetting(id="window_step".to_owned(),
-                            label="Шаг окна слов: ".to_owned(),
+                            label=get_translation("window_step", None),
                             min=WINDOW_STEP_MIN, max=WINDOW_STEP_MAX,
                             value=window_step, valid=window_step_valid)
                         NumberSetting(id="summary_len".to_owned(),
-                            label="Количество предложений на документ для переранжирования: ".to_owned(),
+                            label=get_translation("summary_len", None),
                             min=SUMMARY_LEN_MIN, max=SUMMARY_LEN_MAX,
                             value=summary_len, valid=summary_len_valid)
                     }
 
-                    fieldset {
-                        legend { "Предупреждение" }
-                        p {
-                            "Для применения серверных настроек и настроек сервера нейронных сетей требуется перезапуск.
-                            После добавления или удаления индексируемых папок нужно выполнить индексацию.
-                            Для применения настроек сервера нейронных сетей, влияющих на индексацию, таких как
-                            использование семантического поиска по тексту или изображениям (и их параметров),
-                            нужно выполнить переиндексацию (очистить индекс и заново проиндексировать)."
-                        }
-                    }
-
                     div(class="settings_buttons") {
-                        button(type="button", on:click=reset_settings) { "Отмена" }
-                        button(type="submit", disabled=*any_invalid.get()) { "Сохранить" }
+                        button(type="button", on:click=reset_settings) { (get_translation("cancel", None)) }
+                        button(type="submit", disabled=*any_invalid.get()) { (get_translation("save", None)) }
                     }
                 }
             }
